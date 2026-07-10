@@ -1,37 +1,36 @@
 package protocol
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
+	"reflect"
 )
 
-const Version = 1
+const Version uint8 = 2
+
+type MessageType uint8
 
 const (
-	TypeJoinRoom          = "join_room"
-	TypeLeaveRoom         = "leave_room"
-	TypePing              = "ping"
-	TypeInput             = "input"
-	TypeJoined            = "joined"
-	TypeRoomState         = "room_state"
-	TypeMatchStarted      = "match_started"
-	TypeSnapshot          = "snapshot"
-	TypeProjectileSpawned = "projectile_spawned"
-	TypeProjectileRemoved = "projectile_removed"
-	TypeMatchEnded        = "match_ended"
-	TypePong              = "pong"
-	TypeError             = "error"
-	TypeServerClosed      = "server_shutdown"
+	TypeJoinRoom          MessageType = 1
+	TypeLeaveRoom         MessageType = 2
+	TypePing              MessageType = 3
+	TypeInput             MessageType = 4
+	TypeJoined            MessageType = 64
+	TypeRoomState         MessageType = 65
+	TypeMatchStarted      MessageType = 66
+	TypeSnapshot          MessageType = 67
+	TypeProjectileSpawned MessageType = 68
+	TypeProjectileRemoved MessageType = 69
+	TypeMatchEnded        MessageType = 70
+	TypePong              MessageType = 71
+	TypeError             MessageType = 126
+	TypeServerClosed      MessageType = 127
 )
 
 type Envelope struct {
-	Version   int             `json:"v"`
-	Type      string          `json:"type"`
-	RequestID string          `json:"requestId,omitempty"`
-	Payload   json.RawMessage `json:"payload"`
+	Version   uint8
+	Type      MessageType
+	RequestID string
+	Payload   any
 }
 
 type JoinRoomPayload struct {
@@ -161,17 +160,14 @@ type MatchEndedPayload struct {
 	TotalKills int    `json:"totalKills"`
 }
 
-func NewEnvelope(messageType, requestID string, payload any) (Envelope, error) {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return Envelope{}, err
+func NewEnvelope(messageType MessageType, requestID string, payload any) (Envelope, error) {
+	if !messageType.valid() {
+		return Envelope{}, fmt.Errorf("unknown message type %d", messageType)
 	}
-	return Envelope{
-		Version:   Version,
-		Type:      messageType,
-		RequestID: requestID,
-		Payload:   raw,
-	}, nil
+	if len(requestID) > 255 {
+		return Envelope{}, fmt.Errorf("request ID exceeds 255 bytes")
+	}
+	return Envelope{Version: Version, Type: messageType, RequestID: requestID, Payload: payload}, nil
 }
 
 func Error(requestID, code, message string) Envelope {
@@ -180,16 +176,28 @@ func Error(requestID, code, message string) Envelope {
 }
 
 func (e Envelope) DecodePayload(target any) error {
-	if len(e.Payload) == 0 {
+	if target == nil || e.Payload == nil {
 		return fmt.Errorf("payload is required")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(e.Payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
+	targetValue := reflect.ValueOf(target)
+	if targetValue.Kind() != reflect.Pointer || targetValue.IsNil() {
+		return fmt.Errorf("payload target must be a non-nil pointer")
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("payload contains trailing data")
+	payloadValue := reflect.ValueOf(e.Payload)
+	if !payloadValue.Type().AssignableTo(targetValue.Elem().Type()) {
+		return fmt.Errorf("payload type %T cannot decode into %T", e.Payload, target)
 	}
+	targetValue.Elem().Set(payloadValue)
 	return nil
+}
+
+func (t MessageType) valid() bool {
+	switch t {
+	case TypeJoinRoom, TypeLeaveRoom, TypePing, TypeInput, TypeJoined, TypeRoomState,
+		TypeMatchStarted, TypeSnapshot, TypeProjectileSpawned, TypeProjectileRemoved,
+		TypeMatchEnded, TypePong, TypeError, TypeServerClosed:
+		return true
+	default:
+		return false
+	}
 }

@@ -45,7 +45,9 @@ Do not silently resolve a conflict that changes player-visible behavior or the w
 - React owns screens and overlays. Phaser owns the rendered game world. Keep networking separate from both.
 - Pin Phaser exactly to `4.2.1`. Use Node 24 LTS and a supported Go 1.26 patch release unless the user changes these decisions.
 - Fetch current library or tool documentation through Context7 before using version-specific APIs. Never mix Phaser 3 examples into Phaser 4 code.
-- Preserve protocol version `v: 1` until an intentional compatibility decision changes it.
+- Preserve binary WebSocket protocol version `v: 2` until an intentional compatibility decision changes it. HTTP remains JSON under `/api/v1`.
+- Encode all WebSocket application messages with the binary contract in `contracts/`; never add JSON/base64 to the realtime path.
+- Use ByteDance Sonic for backend HTTP JSON encoding and decoding.
 - Prefer deterministic, testable simulation code and a stable fixed-tick operation order.
 
 ## Scope and quality

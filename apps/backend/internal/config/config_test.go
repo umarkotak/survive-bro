@@ -23,7 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.HTTPAddress != ":3701" {
 		t.Fatalf("HTTPAddress = %q", cfg.HTTPAddress)
 	}
-	if !reflect.DeepEqual(cfg.AllowedOrigins, []string{"http://localhost:3702", "http://127.0.0.1:3702"}) {
+	if !reflect.DeepEqual(cfg.AllowedOrigins, []string{"http://localhost:3702", "http://127.0.0.1:3702", "https://survive-bro-dev.cabocil.com"}) {
 		t.Fatalf("AllowedOrigins = %#v", cfg.AllowedOrigins)
 	}
 	if cfg.RoomTTL != 10*time.Minute || cfg.JoinTimeout != 5*time.Second {

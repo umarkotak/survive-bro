@@ -427,7 +427,7 @@ func (r *Room) broadcastSimulationEvents(clients map[string]*Player, events simu
 	return playerIDs
 }
 
-func (r *Room) broadcastCritical(clients map[string]*Player, messageType string, payload any) []string {
+func (r *Room) broadcastCritical(clients map[string]*Player, messageType protocol.MessageType, payload any) []string {
 	envelope, err := protocol.NewEnvelope(messageType, "", payload)
 	if err != nil {
 		return nil

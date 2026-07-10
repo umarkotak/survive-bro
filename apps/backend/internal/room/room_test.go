@@ -2,11 +2,11 @@ package room
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"survive-bro/apps/backend/internal/protocol"
 )
@@ -55,6 +55,19 @@ func TestManagerEnsuresCanonicalNamedRoom(t *testing.T) {
 	}
 }
 
+func TestNormalizeNameClonesBorrowedRequestMemory(t *testing.T) {
+	source := []byte("BINARY-V2")
+	borrowed := unsafe.String(&source[0], len(source))
+	normalized, err := NormalizeName(borrowed)
+	if err != nil {
+		t.Fatalf("NormalizeName() error = %v", err)
+	}
+	source[0] = 'X'
+	if normalized != "BINARY-V2" {
+		t.Fatalf("normalized name changed with source buffer: %q", normalized)
+	}
+}
+
 func TestRoomJoinCapacityAndHostTransfer(t *testing.T) {
 	manager := NewManager(time.Minute)
 	t.Cleanup(func() { _ = manager.Close(context.Background()) })
@@ -92,7 +105,7 @@ func TestRoomJoinCapacityAndHostTransfer(t *testing.T) {
 		select {
 		case envelope := <-clients[1].send:
 			if envelope.Type == protocol.TypeRoomState {
-				if err := json.Unmarshal(envelope.Payload, &latest); err != nil {
+				if err := envelope.DecodePayload(&latest); err != nil {
 					t.Fatalf("decode room state: %v", err)
 				}
 			}

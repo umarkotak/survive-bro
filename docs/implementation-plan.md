@@ -19,9 +19,11 @@ The repository now has a quick-play vertical slice spanning the room, movement, 
 - Backend defaults to `:3701`; Vite defaults to `:3702` and proxies HTTP/WebSocket traffic.
 - A player enters a named room. `PUT /api/v1/rooms/{roomName}` creates it if absent or returns the existing room, then the WebSocket join starts or joins its live match.
 - One room goroutine owns a 20 Hz authoritative simulation and sends 10 Hz snapshots.
+- WebSocket traffic uses binary protocol v2; backend HTTP JSON uses Sonic.
 - Multiple clients render the same players, enemies, projectiles, pickups, XP, timer, and result.
 - The local client predicts/reconciles movement, remote players interpolate, and off-screen teammates receive edge indicators.
 - Focused Go tests include two real WebSocket clients observing authoritative movement; frontend tests cover edge placement and core model rules.
+- A 4-player/150-monster/50-pickup codec fixture measures `3262` binary bytes versus `9137` Sonic JSON bytes on Apple M5 Pro, with binary encoding around `6x` and decoding around `8.5x` faster in the recorded local benchmark.
 
 This checkpoint does not complete the milestones below. Guardian selection, upgrades, reconnect, rematch, richer results, data-file validation, load evidence, and the full production gates remain open.
 
@@ -41,7 +43,7 @@ Deliver:
 - React/TypeScript/Vite app in `apps/game`; mount one Phaser 4.2.1 instance.
 - Node 24 and Go 1.26 patch-version declarations.
 - Root commands for format, lint, test, build, and local development.
-- Dockerfiles, default two-service Compose, CI, structured `slog`, configuration, and protocol `v: 1`.
+- Dockerfiles, default two-service Compose, CI, structured `slog`, configuration, and binary protocol `v: 2`.
 - `/health/live`, `/health/ready`, and metrics plumbing.
 
 Gate:
@@ -120,7 +122,7 @@ Deliver:
 
 - Ranger Arc Bolt spawn/remove protocol and client extrapolation.
 - Guardian server-authoritative pulse plus client-only effect.
-- XP orbs, team level, per-player offers, timeout selection, and four generic upgrades.
+- XP orbs, team level, immediate Arc Bolt projectile-speed scaling, per-player offers, timeout selection, and four generic upgrades.
 - Phaser pools for projectiles, enemies, pickups, and effects.
 
 Gate:

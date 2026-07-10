@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/gofiber/contrib/v3/websocket"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
@@ -32,14 +33,19 @@ type Handler struct {
 
 func NewRouter(cfg config.Config, rooms *room.Manager, logger *slog.Logger, ready ReadyFunc) *fiber.App {
 	app := fiber.New(fiber.Config{
-		AppName:   "Survive Bro Game Server",
-		BodyLimit: cfg.HTTPBodyLimitBytes,
+		AppName:     "Survive Bro Game Server",
+		BodyLimit:   cfg.HTTPBodyLimitBytes,
+		JSONEncoder: sonic.Marshal,
+		JSONDecoder: sonic.Unmarshal,
 	})
 	handler := &Handler{rooms: rooms, cfg: cfg, logger: logger, ready: ready}
 
 	app.Use(requestid.New())
 	app.Use(recoverer.New())
 	app.Use(handler.logRequest)
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"*"},
+	}))
 
 	app.Get("/health/live", handler.live)
 	app.Get("/health/ready", handler.readiness)
@@ -47,7 +53,7 @@ func NewRouter(cfg config.Config, rooms *room.Manager, logger *slog.Logger, read
 	app.Post("/api/v1/rooms", handler.createRoom)
 	app.Put("/api/v1/rooms/:roomName", handler.ensureRoom)
 	app.Get("/api/v1/rooms/:roomName", handler.inspectRoom)
-	app.Get("/ws/v1/rooms/:roomName", handler.prepareWebSocket, websocket.New(handler.serveWebSocket, websocket.Config{
+	app.Get("/ws/v2/rooms/:roomName", handler.prepareWebSocket, websocket.New(handler.serveWebSocket, websocket.Config{
 		HandshakeTimeout:  cfg.JoinTimeout,
 		Origins:           cfg.AllowedOrigins,
 		AllowEmptyOrigin:  false,
@@ -179,13 +185,9 @@ func (h *Handler) serveWebSocket(connection *websocket.Conn) {
 	connection.SetReadLimit(h.cfg.WebSocketMessageBytes)
 	_ = connection.SetReadDeadline(time.Now().Add(h.cfg.JoinTimeout))
 
-	var first protocol.Envelope
-	if err := connection.ReadJSON(&first); err != nil {
+	first, err := readBinaryEnvelope(connection)
+	if err != nil {
 		h.writeAndClose(connection, protocol.Error("", "join_required", "join_room must be sent before the deadline"), websocket.ClosePolicyViolation)
-		return
-	}
-	if first.Version != protocol.Version {
-		h.writeAndClose(connection, protocol.Error(first.RequestID, "unsupported_version", "protocol version must be 1"), websocket.CloseProtocolError)
 		return
 	}
 	if first.Type != protocol.TypeJoinRoom {
@@ -218,19 +220,11 @@ func (h *Handler) serveWebSocket(connection *websocket.Conn) {
 	}()
 
 	for {
-		var message protocol.Envelope
-		if err := connection.ReadJSON(&message); err != nil {
+		message, err := readBinaryEnvelope(connection)
+		if err != nil {
 			return
 		}
 		_ = connection.SetReadDeadline(time.Now().Add(30 * time.Second))
-		if message.Version != protocol.Version {
-			_ = currentRoom.Send(context.Background(), joined.PlayerID, protocol.Error(message.RequestID, "unsupported_version", "protocol version must be 1"))
-			continue
-		}
-		if strings.TrimSpace(message.Type) == "" {
-			_ = currentRoom.Send(context.Background(), joined.PlayerID, protocol.Error(message.RequestID, "invalid_message", "message type is required"))
-			continue
-		}
 		if err := currentRoom.Handle(context.Background(), joined.PlayerID, message); err != nil {
 			return
 		}
@@ -245,7 +239,12 @@ func (h *Handler) writeLoop(connection *websocket.Conn, outgoing <-chan protocol
 	defer connection.Close()
 	for message := range outgoing {
 		_ = connection.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := connection.WriteJSON(message); err != nil {
+		encoded, err := protocol.Encode(message)
+		if err != nil {
+			h.logger.Error("encode_websocket_message", "error", err, "message_type", message.Type)
+			return
+		}
+		if err := connection.WriteMessage(websocket.BinaryMessage, encoded); err != nil {
 			return
 		}
 	}
@@ -253,8 +252,21 @@ func (h *Handler) writeLoop(connection *websocket.Conn, outgoing <-chan protocol
 
 func (h *Handler) writeAndClose(connection *websocket.Conn, message protocol.Envelope, closeCode int) {
 	_ = connection.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	_ = connection.WriteJSON(message)
+	if encoded, err := protocol.Encode(message); err == nil {
+		_ = connection.WriteMessage(websocket.BinaryMessage, encoded)
+	}
 	_ = connection.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, "connection closed"), time.Now().Add(2*time.Second))
+}
+
+func readBinaryEnvelope(connection *websocket.Conn) (protocol.Envelope, error) {
+	messageType, data, err := connection.ReadMessage()
+	if err != nil {
+		return protocol.Envelope{}, err
+	}
+	if messageType != websocket.BinaryMessage {
+		return protocol.Envelope{}, fmt.Errorf("WebSocket application messages must be binary")
+	}
+	return protocol.Decode(data)
 }
 
 func joinError(err error) (string, string) {

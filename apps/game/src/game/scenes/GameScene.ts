@@ -47,8 +47,8 @@ interface ProjectileView {
 
 export class GameScene extends Phaser.Scene {
   private readonly session: MultiplayerSession
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
-  private keys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>
+  private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null
+  private keys: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key> | null = null
   private readonly players = new Map<string, PlayerView>()
   private readonly monsters = new Map<number, MonsterView>()
   private readonly pickups = new Map<number, Phaser.GameObjects.Image>()
@@ -72,9 +72,10 @@ export class GameScene extends Phaser.Scene {
     this.add.tileSprite(1600, 900, 3200, 1800, 'meadow-ground').setDepth(-20)
     this.cameras.main.setBounds(0, 0, 3200, 1800)
 
-    if (!this.input.keyboard) throw new Error('Keyboard input is required for the desktop MVP')
-    this.cursors = this.input.keyboard.createCursorKeys()
-    this.keys = this.input.keyboard.addKeys('W,A,S,D') as Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>
+    if (this.input.keyboard) {
+      this.cursors = this.input.keyboard.createCursorKeys()
+      this.keys = this.input.keyboard.addKeys('W,A,S,D') as Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>
+    }
 
     this.unsubscribeNetwork = this.session.network.subscribe((message) => this.handleMessage(message))
     this.unsubscribeConnection = this.session.network.subscribeConnection((connection) => this.session.bridge.patch({ connection }))
@@ -206,9 +207,10 @@ export class GameScene extends Phaser.Scene {
     const local = this.players.get(this.session.network.playerId)
     if (!local || !local.alive) return
 
-    const horizontal = Number(this.cursors.right.isDown || this.keys.D.isDown) - Number(this.cursors.left.isDown || this.keys.A.isDown)
-    const vertical = Number(this.cursors.down.isDown || this.keys.S.isDown) - Number(this.cursors.up.isDown || this.keys.W.isDown)
-    const movement = normalizeMovement(horizontal, vertical)
+    const horizontal = Number(this.cursors?.right.isDown || this.keys?.D.isDown) - Number(this.cursors?.left.isDown || this.keys?.A.isDown)
+    const vertical = Number(this.cursors?.down.isDown || this.keys?.S.isDown) - Number(this.cursors?.up.isDown || this.keys?.W.isDown)
+    const virtual = this.session.bridge.getVirtualMovement()
+    const movement = normalizeMovement(horizontal + virtual.x, vertical + virtual.y)
     const changed = movement.x !== this.lastMoveX || movement.y !== this.lastMoveY
 
     if (changed || time-this.lastInputSentAt >= 50) {
@@ -395,6 +397,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.session.bridge.setVirtualMovement(0, 0)
     this.unsubscribeNetwork?.()
     this.unsubscribeConnection?.()
     this.unsubscribeNetwork = null

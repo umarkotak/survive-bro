@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 import type { GameHudState } from './bridge/GameBridge'
 import { GameCanvas } from './components/GameCanvas'
-import { formatRemainingTime } from './game/model'
 import { MultiplayerSession } from './network/MultiplayerSession'
 
 export function App() {
@@ -12,6 +11,7 @@ export function App() {
   const [hud, setHud] = useState<GameHudState | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!session) return
@@ -50,6 +50,7 @@ export function App() {
 
   function leaveRoom() {
     session?.close()
+    setMenuOpen(false)
     setSession(null)
     setHud(null)
   }
@@ -107,53 +108,50 @@ export function App() {
       <section className="game-frame">
         <GameCanvas session={session} />
 
-        <header className="game-header">
-          <div className="brand">
-            <span className="brand-mark">SB</span>
-            <div>
-              <strong>Survive Bro</strong>
-              <small>{hud.roomName} · <span className={`connection ${hud.connection}`}>{hud.connection}</span></small>
-            </div>
+        <div className="game-hud">
+          <div className="experience-strip" aria-label={`${hud.experience} of ${hud.experienceRequired} experience`}>
+            <i style={{ width: `${experiencePercent}%` }} />
           </div>
 
-          <div className="timer" aria-label="Time remaining">
-            <span>Meadow</span>
-            <strong>{formatRemainingTime(hud.remainingMs)}</strong>
-          </div>
-
-          <div className="match-stats">
-            <span><b>{hud.playerCount}</b> players</span>
-            <span><b>{hud.kills}</b> defeated</span>
-            <span><b>{hud.enemies}</b> nearby</span>
-            <button className="leave-button" type="button" onClick={leaveRoom}>Leave</button>
-          </div>
-        </header>
-
-        <aside className="status-panel" aria-label="Ranger status">
-          <div className="character-chip">
-            <span className="character-avatar">R</span>
-            <div>
+          <aside className="health-panel" aria-label={`Level ${hud.level}, ${hud.hp} of ${hud.maxHp} health`}>
+            <div className="health-heading">
               <strong>{hud.displayName || 'Ranger'}</strong>
-              <small>Arc Bolt · Team level {hud.level}</small>
+              <b>LV {hud.level}</b>
             </div>
-          </div>
+            <div className="health-value"><span>HP</span><b>{hud.hp}/{hud.maxHp}</b></div>
+            <div className="health-meter"><i style={{ width: `${healthPercent}%` }} /></div>
+          </aside>
 
-          <div className="meter-row">
-            <span>HP</span>
-            <div className="meter health-meter"><i style={{ width: `${healthPercent}%` }} /></div>
-            <b>{hud.hp}/{hud.maxHp}</b>
-          </div>
-          <div className="meter-row">
-            <span>XP</span>
-            <div className="meter experience-meter"><i style={{ width: `${experiencePercent}%` }} /></div>
-            <b>{hud.experience}/{hud.experienceRequired}</b>
-          </div>
-        </aside>
+          <button
+            className="menu-toggle"
+            type="button"
+            aria-expanded={menuOpen}
+            aria-controls="game-menu"
+            onClick={() => setMenuOpen(true)}
+          >
+            <span className="menu-icon" aria-hidden="true"><i /><i /><i /></span>
+            <span>Menu</span>
+          </button>
+        </div>
 
-        <aside className="controls-panel">
-          <span><kbd>WASD</kbd> or <kbd>Arrows</kbd></span>
-          <small>Move · edge markers point to teammates</small>
-        </aside>
+        {menuOpen && (
+          <div className="menu-backdrop" onClick={() => setMenuOpen(false)}>
+            <section
+              className="game-menu"
+              id="game-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="game-menu-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button type="button" className="menu-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>×</button>
+              <span className="brand-mark">SB</span>
+              <h2 id="game-menu-title">Game menu</h2>
+              <p>Room {hud.roomName}</p>
+              <button className="leave-button" type="button" onClick={leaveRoom}>Leave room</button>
+            </section>
+          </div>
+        )}
 
         {hud.outcome !== 'playing' && (
           <div className="result-backdrop" role="dialog" aria-modal="true" aria-labelledby="result-title">

@@ -6,9 +6,10 @@ This document extracts the binding product rules from the initial design brief. 
 
 Build a browser-first, cooperative, top-down survival game for one to four anonymous players. A match lasts five minutes. The team wins if at least one player is alive when the timer reaches zero and loses when all players are dead.
 
-Desktop controls only for the MVP:
+Controls:
 
 - WASD or arrow keys for movement.
+- A virtual joystick for touch/mobile movement.
 - Number keys `1`, `2`, and `3` for upgrades.
 - Mouse for lobby and character selection.
 
@@ -51,7 +52,8 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 ### Ranger
 
 - HP `100`, speed `220`, pickup radius `120`, weapon `arc_bolt`.
-- Arc Bolt: damage `20`, cooldown `750 ms`, speed `700`, range `700`, radius `10`.
+- Arc Bolt: damage `20`, cooldown `750 ms`, base speed `700`, range `700`, radius `10`.
+- Each team level above level 1 adds `70` projectile speed (`10%` of the base speed). The server applies the current level when it spawns a projectile.
 - Target nearest enemy; fire one straight, non-homing projectile.
 - Remove on enemy hit, obstacle hit, or maximum range.
 
@@ -93,7 +95,7 @@ The configuration may support a disabled Brute elite: HP `180`, speed `55`, dama
 
 ## Experience and upgrades
 
-Experience is team-shared. Threshold: `round(8 + 5 * level^1.45)`. Every surviving player levels together but chooses an individual upgrade.
+Experience is team-shared. Threshold: `round(8 + 5 * level^1.45)`. Every surviving player levels together. Each level immediately increases Arc Bolt projectile speed; individual upgrade choices remain a later milestone.
 
 The server offers three valid choices. Play continues. After eight seconds, apply the first offer if no selection arrives.
 
@@ -121,4 +123,4 @@ Return survival time, team level, total kills, and per-player damage dealt, dama
 
 ## Explicit non-goals
 
-Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, public room browsing, chat, PvP, mobile controls, gamepads, additional maps, unlocks, cosmetics, inventory, equipment, procedural maps, bosses, revive, voice, Kubernetes, microservices, Protobuf, binary messages, replay, or client-side anti-cheat beyond server authority.
+Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, public room browsing, chat, PvP, gamepads, additional maps, unlocks, cosmetics, inventory, equipment, procedural maps, bosses, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.

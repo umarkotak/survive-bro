@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	clientws "github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v3"
 
@@ -23,7 +23,7 @@ import (
 func testConfig() config.Config {
 	return config.Config{
 		HTTPAddress:             ":0",
-		AllowedOrigins:          []string{"http://localhost:3702", "http://127.0.0.1:3702"},
+		AllowedOrigins:          []string{"http://localhost:3702", "http://127.0.0.1:3702", "https://survive-bro-dev.cabocil.com"},
 		RoomTTL:                 time.Minute,
 		JoinTimeout:             250 * time.Millisecond,
 		ShutdownTimeout:         time.Second,
@@ -59,6 +59,27 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsAnyOrigin(t *testing.T) {
+	app, _ := testRouter(t, func() bool { return true })
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/rooms/FRIDAY-SQUAD", http.NoBody)
+	request.Header.Set("Origin", "https://survive-bro-dev.cabocil.com")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPut)
+
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatalf("OPTIONS room error = %v", err)
+	}
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("OPTIONS room status = %d", response.StatusCode)
+	}
+	if got := response.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+	if got := response.Header.Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) {
+		t.Fatalf("Access-Control-Allow-Methods = %q", got)
+	}
+}
+
 func TestReadinessReportsDraining(t *testing.T) {
 	app, _ := testRouter(t, func() bool { return false })
 	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody))
@@ -82,9 +103,7 @@ func TestCreateAndInspectRoom(t *testing.T) {
 	var created struct {
 		RoomName string `json:"roomName"`
 	}
-	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
-		t.Fatalf("decode create response: %v", err)
-	}
+	decodeHTTPJSON(t, createResponse.Body, &created)
 
 	inspectResponse, err := app.Test(httptest.NewRequest(http.MethodGet, "/api/v1/rooms/"+strings.ToLower(created.RoomName), http.NoBody))
 	if err != nil {
@@ -100,9 +119,7 @@ func TestCreateAndInspectRoom(t *testing.T) {
 		MaxPlayers  int    `json:"maxPlayers"`
 		Joinable    bool   `json:"joinable"`
 	}
-	if err := json.NewDecoder(inspectResponse.Body).Decode(&inspected); err != nil {
-		t.Fatalf("decode inspect response: %v", err)
-	}
+	decodeHTTPJSON(t, inspectResponse.Body, &inspected)
 	if inspected.RoomName != created.RoomName || inspected.Status != "lobby" || !inspected.Joinable || inspected.MaxPlayers != 4 {
 		t.Fatalf("unexpected inspect response: %#v", inspected)
 	}
@@ -122,9 +139,7 @@ func TestEnsureNamedRoomIsIdempotent(t *testing.T) {
 			RoomName string `json:"roomName"`
 			Created  bool   `json:"created"`
 		}
-		if err := json.NewDecoder(response.Body).Decode(&ensured); err != nil {
-			t.Fatalf("decode ensure response: %v", err)
-		}
+		decodeHTTPJSON(t, response.Body, &ensured)
 		if ensured.RoomName != "FRIDAY-SQUAD" || ensured.Created != (index == 0) {
 			t.Fatalf("unexpected ensure response: %#v", ensured)
 		}
@@ -134,10 +149,6 @@ func TestEnsureNamedRoomIsIdempotent(t *testing.T) {
 func TestWebSocketJoinAndPing(t *testing.T) {
 	cfg := testConfig()
 	manager := room.NewManager(cfg.RoomTTL)
-	created, err := manager.Create()
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
 	app := NewRouter(cfg, manager, slog.New(slog.NewTextHandler(io.Discard, nil)), func() bool { return true })
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -152,9 +163,22 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 		_ = app.Shutdown()
 		<-serverDone
 	})
+	roomName := "BINARY-HTTP"
+	ensureRequest, err := http.NewRequest(http.MethodPut, "http://"+listener.Addr().String()+"/api/v1/rooms/"+roomName, http.NoBody)
+	if err != nil {
+		t.Fatalf("create ensure request: %v", err)
+	}
+	ensureResponse, err := http.DefaultClient.Do(ensureRequest)
+	if err != nil {
+		t.Fatalf("ensure room: %v", err)
+	}
+	ensureResponse.Body.Close()
+	if ensureResponse.StatusCode != http.StatusOK {
+		t.Fatalf("ensure room status = %d", ensureResponse.StatusCode)
+	}
 
-	header := http.Header{"Origin": []string{"http://localhost:3702"}}
-	connection, response, err := clientws.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws/v1/rooms/"+created.Code(), header)
+	header := http.Header{"Origin": []string{"https://survive-bro-dev.cabocil.com"}}
+	connection, response, err := clientws.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws/v2/rooms/"+roomName, header)
 	if err != nil {
 		if response != nil {
 			t.Fatalf("dial status=%d error=%v", response.StatusCode, err)
@@ -167,14 +191,9 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("join envelope: %v", err)
 	}
-	if err := connection.WriteJSON(join); err != nil {
-		t.Fatalf("write join: %v", err)
-	}
+	writeWebSocketEnvelope(t, connection, join)
 
-	var joined protocol.Envelope
-	if err := connection.ReadJSON(&joined); err != nil {
-		t.Fatalf("read joined: %v", err)
-	}
+	joined := readWebSocketEnvelope(t, connection)
 	if joined.Type != protocol.TypeJoined {
 		t.Fatalf("first message type = %q", joined.Type)
 	}
@@ -182,16 +201,13 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 	if err := joined.DecodePayload(&joinedPayload); err != nil {
 		t.Fatalf("decode joined: %v", err)
 	}
-	if !joinedPayload.Host || joinedPayload.RoomName != created.Code() || joinedPayload.ReconnectToken == "" {
+	if !joinedPayload.Host || joinedPayload.RoomName != roomName || joinedPayload.ReconnectToken == "" {
 		t.Fatalf("unexpected joined payload: %#v", joinedPayload)
 	}
 
-	seen := map[string]bool{}
+	seen := map[protocol.MessageType]bool{}
 	for !(seen[protocol.TypeMatchStarted] && seen[protocol.TypeRoomState] && seen[protocol.TypeSnapshot]) {
-		var message protocol.Envelope
-		if err := connection.ReadJSON(&message); err != nil {
-			t.Fatalf("read initial multiplayer state: %v", err)
-		}
+		message := readWebSocketEnvelope(t, connection)
 		seen[message.Type] = true
 	}
 
@@ -199,14 +215,9 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ping envelope: %v", err)
 	}
-	if err := connection.WriteJSON(ping); err != nil {
-		t.Fatalf("write ping: %v", err)
-	}
+	writeWebSocketEnvelope(t, connection, ping)
 	for {
-		var pong protocol.Envelope
-		if err := connection.ReadJSON(&pong); err != nil {
-			t.Fatalf("read pong: %v", err)
-		}
+		pong := readWebSocketEnvelope(t, connection)
 		if pong.Type == protocol.TypePong {
 			if pong.RequestID != "ping-1" {
 				t.Fatalf("unexpected pong: %#v", pong)
@@ -216,9 +227,7 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 	}
 
 	leave, _ := protocol.NewEnvelope(protocol.TypeLeaveRoom, "leave-1", struct{}{})
-	if err := connection.WriteJSON(leave); err != nil {
-		t.Fatalf("write leave: %v", err)
-	}
+	writeWebSocketEnvelope(t, connection, leave)
 }
 
 func TestTwoClientsShareAuthoritativeMovement(t *testing.T) {
@@ -244,18 +253,13 @@ func TestTwoClientsShareAuthoritativeMovement(t *testing.T) {
 	joinClient := func(displayName string) (*clientws.Conn, protocol.JoinedPayload) {
 		t.Helper()
 		header := http.Header{"Origin": []string{"http://127.0.0.1:3702"}}
-		connection, _, dialErr := clientws.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws/v1/rooms/"+created.Code(), header)
+		connection, _, dialErr := clientws.DefaultDialer.Dial("ws://"+listener.Addr().String()+"/ws/v2/rooms/"+created.Code(), header)
 		if dialErr != nil {
 			t.Fatalf("dial %s: %v", displayName, dialErr)
 		}
 		join, _ := protocol.NewEnvelope(protocol.TypeJoinRoom, "join-"+displayName, protocol.JoinRoomPayload{DisplayName: displayName})
-		if writeErr := connection.WriteJSON(join); writeErr != nil {
-			t.Fatalf("join %s: %v", displayName, writeErr)
-		}
-		var message protocol.Envelope
-		if readErr := connection.ReadJSON(&message); readErr != nil {
-			t.Fatalf("read joined %s: %v", displayName, readErr)
-		}
+		writeWebSocketEnvelope(t, connection, join)
+		message := readWebSocketEnvelope(t, connection)
 		var joined protocol.JoinedPayload
 		if decodeErr := message.DecodePayload(&joined); decodeErr != nil {
 			t.Fatalf("decode joined %s: %v", displayName, decodeErr)
@@ -271,9 +275,7 @@ func TestTwoClientsShareAuthoritativeMovement(t *testing.T) {
 	baseline := readSnapshot(t, second, 2)
 	startX := snapshotPlayerX(t, baseline, firstJoined.PlayerID)
 	input, _ := protocol.NewEnvelope(protocol.TypeInput, "", protocol.InputPayload{Sequence: 1, MoveX: 1, MoveY: 0})
-	if err := first.WriteJSON(input); err != nil {
-		t.Fatalf("write input: %v", err)
-	}
+	writeWebSocketEnvelope(t, first, input)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -289,10 +291,7 @@ func readSnapshot(t *testing.T, connection *clientws.Conn, minimumPlayers int) p
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
 	for {
-		var message protocol.Envelope
-		if err := connection.ReadJSON(&message); err != nil {
-			t.Fatalf("read snapshot: %v", err)
-		}
+		message := readWebSocketEnvelope(t, connection)
 		if message.Type != protocol.TypeSnapshot {
 			continue
 		}
@@ -303,6 +302,44 @@ func readSnapshot(t *testing.T, connection *clientws.Conn, minimumPlayers int) p
 		if len(snapshot.Players) >= minimumPlayers {
 			return snapshot
 		}
+	}
+}
+
+func writeWebSocketEnvelope(t *testing.T, connection *clientws.Conn, envelope protocol.Envelope) {
+	t.Helper()
+	encoded, err := protocol.Encode(envelope)
+	if err != nil {
+		t.Fatalf("encode WebSocket envelope: %v", err)
+	}
+	if err := connection.WriteMessage(clientws.BinaryMessage, encoded); err != nil {
+		t.Fatalf("write WebSocket envelope: %v", err)
+	}
+}
+
+func readWebSocketEnvelope(t *testing.T, connection *clientws.Conn) protocol.Envelope {
+	t.Helper()
+	messageType, data, err := connection.ReadMessage()
+	if err != nil {
+		t.Fatalf("read WebSocket envelope: %v", err)
+	}
+	if messageType != clientws.BinaryMessage {
+		t.Fatalf("WebSocket message type = %d, want binary", messageType)
+	}
+	envelope, err := protocol.Decode(data)
+	if err != nil {
+		t.Fatalf("decode WebSocket envelope: %v", err)
+	}
+	return envelope
+}
+
+func decodeHTTPJSON(t *testing.T, reader io.Reader, target any) {
+	t.Helper()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read HTTP JSON: %v", err)
+	}
+	if err := sonic.Unmarshal(data, target); err != nil {
+		t.Fatalf("decode HTTP JSON: %v", err)
 	}
 }
 

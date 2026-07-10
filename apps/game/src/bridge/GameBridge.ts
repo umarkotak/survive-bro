@@ -40,6 +40,7 @@ const initialState: GameHudState = {
 
 export class GameBridge {
   private state = { ...initialState }
+  private virtualMovement = { x: 0, y: 0 }
   private readonly listeners = new Set<HudListener>()
 
   getSnapshot = (): GameHudState => this.state
@@ -52,5 +53,11 @@ export class GameBridge {
   patch(patch: Partial<GameHudState>): void {
     this.state = { ...this.state, ...patch }
     for (const listener of this.listeners) listener(this.state)
+  }
+
+  getVirtualMovement = (): { x: number; y: number } => this.virtualMovement
+
+  setVirtualMovement(x: number, y: number): void {
+    this.virtualMovement = { x, y }
   }
 }

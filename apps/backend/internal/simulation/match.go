@@ -263,13 +263,14 @@ func (m *Match) updateWeapons(events *Events) {
 		}
 		m.nextProjectileID++
 		angle := math.Atan2(target.Y-player.Y, target.X-player.X)
+		projectileSpeed := ProjectileSpeedAtLevel(m.TeamLevel)
 		projectile := &Projectile{
 			ID:        m.nextProjectileID,
 			OwnerID:   player.ID,
 			X:         player.X,
 			Y:         player.Y,
-			VelocityX: math.Cos(angle) * ProjectileSpeed,
-			VelocityY: math.Sin(angle) * ProjectileSpeed,
+			VelocityX: math.Cos(angle) * projectileSpeed,
+			VelocityY: math.Sin(angle) * projectileSpeed,
 		}
 		m.Projectiles[projectile.ID] = projectile
 		player.LastAttackAt = m.Elapsed

@@ -32,11 +32,13 @@ Do not move authority to simplify a caller. Client visuals may predict or interp
 
 1. Write a short plan for cross-app, protocol, or architectural changes.
 2. Update the contract first when message shape or semantics change.
-3. Implement the smallest end-to-end slice: server behavior, client consumption, errors, and tests.
+3. Implement the smallest end-to-end slice: server behavior, client consumption, and errors.
 4. Keep fixed-tick simulation deterministic and room-owned.
 5. Keep balance values data-driven; validate invalid content at startup.
 6. Update relevant documentation in the same change.
-7. Run focused tests, then the broadest practical milestone checks.
+7. Do not run tests, typechecks, builds, benchmarks, browser checks, or manual playtests unless the user explicitly requests verification.
+
+The user performs manual game verification. Record verification as omitted by request instead of silently treating the change as verified.
 
 Do not spawn agents or split work externally unless the user explicitly asks for delegation. Orchestrate by maintaining boundaries and sequencing.
 
@@ -50,7 +52,7 @@ Do not spawn agents or split work externally unless the user explicitly asks for
 - No goroutine exists per gameplay entity.
 - Reconnect tokens are secure and never logged.
 - MVP non-goals did not enter scope.
-- Acceptance tests cover success, invalid state, disconnect, and cleanup where relevant.
+- When verification is explicitly requested, cover success, invalid state, disconnect, and cleanup where relevant.
 
 ## Handoff
 

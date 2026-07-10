@@ -19,6 +19,7 @@ const (
 	WeaponDamage         = 20
 	WeaponCooldown       = 750 * time.Millisecond
 	ProjectileSpeed      = 700.0
+	ProjectileSpeedLevel = 70.0
 	ProjectileRange      = 700.0
 	ProjectileRadius     = 10.0
 	MonsterMaxHP         = 40
@@ -28,6 +29,10 @@ const (
 	MonsterContactDelay  = 800 * time.Millisecond
 	MonsterXP            = 1
 )
+
+func ProjectileSpeedAtLevel(level int) float64 {
+	return ProjectileSpeed + float64(max(0, level-1))*ProjectileSpeedLevel
+}
 
 type Obstacle struct {
 	ID     string

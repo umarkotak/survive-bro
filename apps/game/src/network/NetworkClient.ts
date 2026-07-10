@@ -1,14 +1,30 @@
 import {
   createEnvelope,
-  parseEnvelope,
+  decodeEnvelope,
+  encodeEnvelope,
   type Envelope,
   type ErrorPayload,
   type JoinedPayload,
 } from './protocol'
+import { joinNetworkUrl, networkConfig } from '../config/network'
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected'
 export type MessageListener = (message: Envelope) => void
 export type ConnectionListener = (state: ConnectionState) => void
+
+const webSocketConnectTimeoutMs = 8_000
+
+export function describeHTTPError(url: string, status: number, statusText: string, serverMessage = ''): string {
+  const response = `HTTP ${status}${statusText ? ` ${statusText}` : ''}`
+  return `Room API failed: ${response} from ${url}${serverMessage ? ` — ${serverMessage}` : ''}`
+}
+
+export function describeWebSocketError(url: string, frontendOrigin: string, code?: number, reason = ''): string {
+  const closeDetail = code === undefined
+    ? 'the browser did not expose the handshake HTTP response or a close code'
+    : `close code ${code}${reason ? ` (${reason})` : ''}`
+  return `WebSocket failed: ${url}; frontend origin: ${frontendOrigin}; ${closeDetail}. Check Cloudflare WebSocket forwarding and ensure backend ALLOWED_ORIGINS contains ${frontendOrigin}.`
+}
 
 export class NetworkClient {
   private socket: WebSocket | null = null
@@ -22,37 +38,70 @@ export class NetworkClient {
 
   async connect(roomName: string, displayName: string): Promise<JoinedPayload> {
     this.setConnectionState('connecting')
-    const ensureResponse = await fetch(`/api/v1/rooms/${encodeURIComponent(roomName)}`, { method: 'PUT' })
+    const roomPath = `/api/v1/rooms/${encodeURIComponent(roomName)}`
+    const roomUrl = joinNetworkUrl(networkConfig.apiBaseUrl, roomPath)
+    let ensureResponse: Response
+    try {
+      ensureResponse = await fetch(roomUrl, { method: 'PUT' })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`Room API network request failed: PUT ${roomUrl} — ${detail}`)
+    }
     if (!ensureResponse.ok) {
       const body = (await ensureResponse.json().catch(() => null)) as { error?: ErrorPayload } | null
-      throw new Error(body?.error?.message ?? 'Could not create or find the room')
+      throw new Error(describeHTTPError(roomUrl, ensureResponse.status, ensureResponse.statusText, body?.error?.message))
     }
-    const ensured = (await ensureResponse.json()) as { roomName: string }
+    let ensured: { roomName: string }
+    try {
+      ensured = (await ensureResponse.json()) as { roomName: string }
+    } catch {
+      throw new Error(`Room API returned invalid JSON: PUT ${roomUrl} (HTTP ${ensureResponse.status})`)
+    }
     this.roomName = ensured.roomName
 
     return new Promise<JoinedPayload>((resolve, reject) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const socket = new WebSocket(`${protocol}//${window.location.host}/ws/v1/rooms/${encodeURIComponent(this.roomName)}`)
+      const socketPath = `/ws/v2/rooms/${encodeURIComponent(this.roomName)}`
+      const socketUrl = joinNetworkUrl(networkConfig.websocketBaseUrl, socketPath)
+      const frontendOrigin = window.location.origin
+      const socket = new WebSocket(socketUrl)
+      socket.binaryType = 'arraybuffer'
       this.socket = socket
       let settled = false
+      let errorFallback: number | null = null
+      const connectTimeout = window.setTimeout(() => {
+        fail(describeWebSocketError(socketUrl, frontendOrigin, undefined, `timed out after ${webSocketConnectTimeoutMs}ms`))
+        socket.close()
+      }, webSocketConnectTimeoutMs)
+
+      const clearConnectTimers = () => {
+        window.clearTimeout(connectTimeout)
+        if (errorFallback !== null) window.clearTimeout(errorFallback)
+      }
+      const fail = (message: string) => {
+        if (settled) return
+        settled = true
+        clearConnectTimers()
+        reject(new Error(message))
+      }
 
       socket.addEventListener('open', () => {
-        socket.send(JSON.stringify(createEnvelope('join_room', { displayName, reconnectToken: null }, this.nextRequestId('join'))))
+        socket.send(encodeEnvelope(createEnvelope('join_room', { displayName, reconnectToken: null }, this.nextRequestId('join'))))
       })
       socket.addEventListener('message', (event) => {
         try {
-          const message = parseEnvelope(String(event.data))
+          if (!(event.data instanceof ArrayBuffer)) throw new Error('Server sent a non-binary WebSocket frame')
+          const message = decodeEnvelope(event.data)
           if (message.type === 'joined') {
             const joined = message.payload as JoinedPayload
             this.playerId = joined.playerId
             settled = true
+            clearConnectTimers()
             this.setConnectionState('connected')
             this.startHeartbeat()
             resolve(joined)
           } else if (message.type === 'error' && !settled) {
             const error = message.payload as ErrorPayload
-            settled = true
-            reject(new Error(error.message))
+            fail(`Game server rejected the WebSocket join [${error.code}]: ${error.message} (${socketUrl})`)
           }
           if (message.type === 'match_started' || message.type === 'room_state' || message.type === 'snapshot' || message.type === 'match_ended') {
             this.replayMessages.set(message.type, message)
@@ -60,23 +109,25 @@ export class NetworkClient {
           for (const listener of this.messageListeners) listener(message)
         } catch (error) {
           if (!settled) {
-            settled = true
-            reject(error instanceof Error ? error : new Error('Invalid server response'))
+            const detail = error instanceof Error ? error.message : String(error)
+            fail(`Invalid WebSocket message from ${socketUrl}: ${detail}`)
           }
         }
       })
       socket.addEventListener('error', () => {
         if (!settled) {
-          settled = true
-          reject(new Error('Could not connect to the game server'))
+          // Browsers hide failed-handshake status and body. Give the close event a
+          // moment to provide its code/reason before falling back to diagnostics.
+          errorFallback = window.setTimeout(() => {
+            fail(describeWebSocketError(socketUrl, frontendOrigin))
+          }, 250)
         }
       })
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         this.stopHeartbeat()
         this.setConnectionState('disconnected')
         if (!settled) {
-          settled = true
-          reject(new Error('The game server closed the connection'))
+          fail(describeWebSocketError(socketUrl, frontendOrigin, event.code, event.reason))
         }
       })
     })
@@ -112,7 +163,7 @@ export class NetworkClient {
   }
 
   private send(message: Envelope): void {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message))
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(encodeEnvelope(message))
   }
 
   private startHeartbeat(): void {

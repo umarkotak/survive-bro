@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultHTTPAddress      = ":3701"
-	defaultAllowedOrigin    = "http://localhost:3702,http://127.0.0.1:3702"
+	defaultAllowedOrigin    = "http://localhost:3702,http://127.0.0.1:3702,https://survive-bro-dev.cabocil.com"
 	defaultRoomTTL          = 10 * time.Minute
 	defaultJoinTimeout      = 5 * time.Second
 	defaultShutdownTimeout  = 10 * time.Second

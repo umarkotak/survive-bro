@@ -3,11 +3,14 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const allowedHosts = ['survive-bro-dev.cabocil.com']
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 3702,
     strictPort: true,
+    allowedHosts,
     proxy: {
       '/api': {
         target: 'http://localhost:3701',
@@ -31,6 +34,7 @@ export default defineConfig({
   preview: {
     port: 3702,
     strictPort: true,
+    allowedHosts,
   },
   test: {
     environment: 'node',

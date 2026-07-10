@@ -1,4 +1,4 @@
-.PHONY: backend-format backend-run backend-test backend-race game-dev game-typecheck game-test game-build
+.PHONY: backend-format backend-run backend-test backend-race backend-bench game-dev game-typecheck game-test game-build
 
 BACKEND_DIR := $(CURDIR)/apps/backend
 BACKEND_GOCACHE := $(BACKEND_DIR)/.gocache
@@ -15,6 +15,9 @@ backend-test:
 
 backend-race:
 	cd $(BACKEND_DIR) && GOCACHE=$(BACKEND_GOCACHE) go test -race ./...
+
+backend-bench:
+	cd $(BACKEND_DIR) && GOCACHE=$(BACKEND_GOCACHE) go test ./internal/protocol -run '^$$' -bench 'Benchmark(Encode|Decode)Snapshot(Binary|SonicJSON)$$' -benchmem
 
 game-dev:
 	cd $(GAME_DIR) && bun run dev

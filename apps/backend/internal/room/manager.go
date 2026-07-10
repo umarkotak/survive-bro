@@ -88,7 +88,9 @@ func (m *Manager) Find(code string) (*Room, error) {
 }
 
 func NormalizeName(name string) (string, error) {
-	normalized := strings.ToUpper(strings.TrimSpace(name))
+	// Fiber path parameters may reference a request buffer that is reused after
+	// the handler returns. Clone the canonical name before storing it as a map key.
+	normalized := strings.Clone(strings.ToUpper(strings.TrimSpace(name)))
 	if len(normalized) < 1 || len(normalized) > 24 {
 		return "", ErrInvalidRoomName
 	}
