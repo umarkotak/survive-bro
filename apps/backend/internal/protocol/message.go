@@ -98,6 +98,8 @@ type SnapshotPlayer struct {
 	Y                  float64 `json:"y"`
 	VelocityX          float64 `json:"velocityX"`
 	VelocityY          float64 `json:"velocityY"`
+	MovementSpeed      float64 `json:"movementSpeed"`
+	ArmorPercent       float64 `json:"armorPercent"`
 	Facing             string  `json:"facing"`
 	HP                 int     `json:"hp"`
 	MaxHP              int     `json:"maxHp"`
@@ -115,16 +117,19 @@ type SnapshotMonster struct {
 }
 
 type SnapshotPickup struct {
-	ID uint64  `json:"id"`
-	X  float64 `json:"x"`
-	Y  float64 `json:"y"`
+	ID   uint64  `json:"id"`
+	Kind string  `json:"kind"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
 }
 
 type SnapshotTeam struct {
-	Level              int `json:"level"`
-	Experience         int `json:"experience"`
-	ExperienceRequired int `json:"experienceRequired"`
-	TotalKills         int `json:"totalKills"`
+	Level              int     `json:"level"`
+	Experience         int     `json:"experience"`
+	ExperienceRequired int     `json:"experienceRequired"`
+	TotalKills         int     `json:"totalKills"`
+	ProjectileCount    int     `json:"projectileCount"`
+	PickupRadius       float64 `json:"pickupRadius"`
 }
 
 type SnapshotPayload struct {

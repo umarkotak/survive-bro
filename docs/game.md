@@ -14,7 +14,8 @@
 - Responsive virtual joystick movement on touch/mobile layouts; portrait phones place it at the bottom center for easier reach, while landscape keeps it bottom-left. Keyboard controls remain available.
 - Camera-edge teammate badges/arrows for players outside the viewport.
 - One consistent desktop/mobile HUD layer above Phaser: a 10-pixel full-width XP bar at the absolute top edge, health and level at top-left, and a top-right menu button opening a modal with the leave action.
-- Each team level makes newly spawned Arc Bolts faster; the client renders the authoritative projectile velocity sent by the server.
+- Levels 1–4 render 1–4 authoritative Arc Bolt trajectories, capped at four. Level and power-crate movement stats come from snapshots so local prediction uses the same resolved speed as the server.
+- XP crystals interpolate along the server-owned magnet pull toward a nearby player. Gold power crates render as distinct pickups and grant bounded haste, armor, or magnet effects.
 - React HUD updates through `GameBridge` at no more than 10 Hz; React does not render world entities or update every frame.
 
 The Go server owns movement, enemies, projectiles, damage, XP, and match outcome. The client sends normalized input intent only.

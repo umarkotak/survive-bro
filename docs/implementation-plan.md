@@ -23,7 +23,7 @@ The repository now has a quick-play vertical slice spanning the room, movement, 
 - Multiple clients render the same players, enemies, projectiles, pickups, XP, timer, and result.
 - The local client predicts/reconciles movement, remote players interpolate, and off-screen teammates receive edge indicators.
 - Focused Go tests include two real WebSocket clients observing authoritative movement; frontend tests cover edge placement and core model rules.
-- A 4-player/150-monster/50-pickup codec fixture measures `3262` binary bytes versus `9137` Sonic JSON bytes on Apple M5 Pro, with binary encoding around `6x` and decoding around `8.5x` faster in the recorded local benchmark.
+- Before resolved upgrade and pickup-kind fields were added, a 4-player/150-monster/50-pickup fixture measured `3262` binary bytes versus `9137` Sonic JSON bytes on Apple M5 Pro. Treat this as historical evidence until verification is explicitly requested and the updated frame is measured.
 
 This checkpoint does not complete the milestones below. Guardian selection, upgrades, reconnect, rematch, richer results, data-file validation, load evidence, and the full production gates remain open.
 
@@ -122,7 +122,7 @@ Deliver:
 
 - Ranger Arc Bolt spawn/remove protocol and client extrapolation.
 - Guardian server-authoritative pulse plus client-only effect.
-- XP orbs, team level, immediate Arc Bolt projectile-speed scaling, per-player offers, timeout selection, and four generic upgrades.
+- XP orbs with server-owned magnet attraction, team level, Arc Bolt speed and 1–4 trajectory scaling, movement/armor/magnet level effects, bounded power crates, per-player offers, timeout selection, and four generic upgrades.
 - Phaser pools for projectiles, enemies, pickups, and effects.
 
 Gate:

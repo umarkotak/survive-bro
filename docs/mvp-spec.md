@@ -54,7 +54,8 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 - HP `100`, speed `220`, pickup radius `120`, weapon `arc_bolt`.
 - Arc Bolt: damage `20`, cooldown `750 ms`, base speed `700`, range `700`, radius `10`.
 - Each team level above level 1 adds `70` projectile speed (`10%` of the base speed). The server applies the current level when it spawns a projectile.
-- Target nearest enemy; fire one straight, non-homing projectile.
+- Levels `1`, `2`, `3`, and `4+` fire `1`, `2`, `3`, and `4` straight trajectories respectively. Trajectories use a centered `10°` spread and remain capped at four.
+- Target nearest enemy; each trajectory is straight and non-homing.
 - Remove on enemy hit, obstacle hit, or maximum range.
 
 ### Guardian
@@ -95,7 +96,9 @@ The configuration may support a disabled Brute elite: HP `180`, speed `55`, dama
 
 ## Experience and upgrades
 
-Experience is team-shared. Threshold: `round(8 + 5 * level^1.45)`. Every surviving player levels together. Each level immediately increases Arc Bolt projectile speed; individual upgrade choices remain a later milestone.
+Experience is team-shared. Threshold: `round(8 + 5 * level^1.45)`. Every surviving player levels together. Each level immediately increases Arc Bolt speed and trajectory count, movement speed by `8%`, damage reduction armor by `10` percentage points, and XP-crystal magnet radius by `15%` of the base radius. Projectile count caps at four, movement bonus caps at `80%`, armor caps at `60%`, and magnet radius caps at `600` units.
+
+XP crystals inside the current magnet radius move toward the nearest living player at `900` units/second and collect at `32` units. Every twelfth team kill also drops a power crate. A collected crate randomly adds one permanent team haste (`+8%` base movement), armor (`+10` percentage points), or magnet (`+60` units) stack; each crate effect is capped at five stacks. Individual upgrade choices remain a later milestone.
 
 The server offers three valid choices. Play continues. After eight seconds, apply the first offer if no selection arrives.
 

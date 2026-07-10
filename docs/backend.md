@@ -13,7 +13,7 @@ The backend foundation and initial room transport are implemented in `apps/backe
 - Idempotent named-room creation/lookup and inspection.
 - One actor goroutine per room.
 - Binary protocol-v2 WebSocket join, identity, ping/pong, input, snapshots, bounded writer queues, origin allowlist, and join/message limits.
-- Authoritative 20 Hz movement, enemies, Ranger projectiles, combat, XP, match timer, and 10 Hz snapshots. Newly spawned Arc Bolts gain `70` speed for every team level above level 1.
+- Authoritative 20 Hz movement, enemies, Ranger multishot projectiles, armor-reduced damage, magnetized XP, bounded power-crate effects, match timer, and 10 Hz snapshots. Newly spawned Arc Bolts gain `70` speed per level and trajectory count progresses from one to four.
 - Late joins into one shared battlefield, with a real two-client integration test.
 - Graceful readiness, room notification, and HTTP shutdown.
 
@@ -85,4 +85,4 @@ WebSocket v2 uses the schema in `contracts/websocket-events.md`; it never marsha
 | Binary v2 decode | `3262` | `2.34–2.43 µs/op` | `12` (`8160 B/op`) |
 | Sonic JSON decode | `9137` | `20.12–20.66 µs/op` | `10` (`~18.5 KiB/op`) |
 
-This specific local benchmark shows a `64.3%` payload reduction, roughly `6x` faster encoding, and roughly `8.5x` faster decoding. It is comparative codec evidence, not a server-capacity claim.
+This benchmark predates the added resolved movement, armor, pickup-kind, projectile-count, and magnet-radius snapshot fields. It remains historical codec evidence, not a current payload measurement or server-capacity claim; rerun only when verification is explicitly requested.

@@ -158,12 +158,12 @@ func BenchmarkDecodeSnapshotSonicJSON(b *testing.B) {
 func benchmarkSnapshot() SnapshotPayload {
 	snapshot := SnapshotPayload{
 		Tick: 4200, ServerTimeMs: 1_780_000_000_000, RemainingMs: 180_000,
-		Team: SnapshotTeam{Level: 7, Experience: 42, ExperienceRequired: 77, TotalKills: 312},
+		Team: SnapshotTeam{Level: 7, Experience: 42, ExperienceRequired: 77, TotalKills: 312, ProjectileCount: 4, PickupRadius: 228},
 	}
 	for index := range 4 {
 		snapshot.Players = append(snapshot.Players, SnapshotPlayer{
 			ID: "p_abcdefghijklmnop", DisplayName: "Player", X: 1500.25 + float64(index), Y: 900.5,
-			VelocityX: 155.56, VelocityY: -155.56, Facing: "right", HP: 100, MaxHP: 100,
+			VelocityX: 155.56, VelocityY: -155.56, MovementSpeed: 325.6, ArmorPercent: 0.6, Facing: "right", HP: 100, MaxHP: 100,
 			Alive: true, LastProcessedInput: uint64(1000 + index), Kills: 78,
 		})
 	}
@@ -171,7 +171,7 @@ func benchmarkSnapshot() SnapshotPayload {
 		snapshot.Monsters = append(snapshot.Monsters, SnapshotMonster{ID: uint64(index + 1), X: float64(500 + index*7), Y: float64(300 + index*3), HP: 40, MaxHP: 40})
 	}
 	for index := range 50 {
-		snapshot.Pickups = append(snapshot.Pickups, SnapshotPickup{ID: uint64(index + 1), X: float64(600 + index*5), Y: float64(400 + index*2)})
+		snapshot.Pickups = append(snapshot.Pickups, SnapshotPickup{ID: uint64(index + 1), Kind: "experience", X: float64(600 + index*5), Y: float64(400 + index*2)})
 	}
 	return snapshot
 }

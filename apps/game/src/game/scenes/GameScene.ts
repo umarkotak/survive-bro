@@ -29,6 +29,7 @@ interface PlayerView {
   targetX: number
   targetY: number
   alive: boolean
+  movementSpeed: number
 }
 
 interface MonsterView {
@@ -45,14 +46,27 @@ interface ProjectileView {
   velocityY: number
 }
 
+interface PickupView {
+  sprite: Phaser.GameObjects.Image
+  kind: SnapshotPickup['kind']
+  targetX: number
+  targetY: number
+}
+
+interface PickupAbsorption {
+  sprite: Phaser.GameObjects.Image
+  elapsed: number
+}
+
 export class GameScene extends Phaser.Scene {
   private readonly session: MultiplayerSession
   private cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null
   private keys: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key> | null = null
   private readonly players = new Map<string, PlayerView>()
   private readonly monsters = new Map<number, MonsterView>()
-  private readonly pickups = new Map<number, Phaser.GameObjects.Image>()
+  private readonly pickups = new Map<number, PickupView>()
   private readonly projectiles = new Map<number, ProjectileView>()
+  private readonly pickupAbsorptions: PickupAbsorption[] = []
   private readonly obstacleSprites: Phaser.GameObjects.Image[] = []
   private obstacles: MatchStartedPayload['obstacles'] = []
   private inputSequence = 0
@@ -87,6 +101,8 @@ export class GameScene extends Phaser.Scene {
     this.updateLocalInput(time, seconds)
     this.interpolatePlayers(seconds)
     this.interpolateMonsters(seconds)
+    this.interpolatePickups(time, seconds)
+    this.updatePickupAbsorptions(seconds)
     this.updateProjectiles(seconds)
     this.updateIndicators()
   }
@@ -127,8 +143,10 @@ export class GameScene extends Phaser.Scene {
       view.shadow.destroy()
     }
     this.monsters.clear()
-    for (const pickup of this.pickups.values()) pickup.destroy()
+    for (const pickup of this.pickups.values()) pickup.sprite.destroy()
     this.pickups.clear()
+    for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
+    this.pickupAbsorptions.length = 0
     for (const projectile of this.projectiles.values()) projectile.sprite.destroy()
     this.projectiles.clear()
     this.obstacles = payload.obstacles
@@ -154,6 +172,7 @@ export class GameScene extends Phaser.Scene {
       view.shadow.setAlpha(player.alive ? 0.9 : 0.25)
       view.targetX = player.x
       view.targetY = player.y
+      view.movementSpeed = player.movementSpeed
 
       if (player.id === localPlayerId) {
         const error = Phaser.Math.Distance.Between(view.sprite.x, view.sprite.y, player.x, player.y)
@@ -223,8 +242,8 @@ export class GameScene extends Phaser.Scene {
 
     if (movement.x !== 0) local.sprite.setFlipX(movement.x < 0)
     let predicted = {
-      x: Phaser.Math.Clamp(local.sprite.x + movement.x * RANGER.movementSpeed * seconds, RANGER.collisionRadius, 3200 - RANGER.collisionRadius),
-      y: Phaser.Math.Clamp(local.sprite.y + movement.y * RANGER.movementSpeed * seconds, RANGER.collisionRadius, 1800 - RANGER.collisionRadius),
+      x: Phaser.Math.Clamp(local.sprite.x + movement.x * local.movementSpeed * seconds, RANGER.collisionRadius, 3200 - RANGER.collisionRadius),
+      y: Phaser.Math.Clamp(local.sprite.y + movement.y * local.movementSpeed * seconds, RANGER.collisionRadius, 1800 - RANGER.collisionRadius),
     }
     for (const obstacle of this.obstacles) {
       predicted = resolveCircleOverlap({ ...predicted, radius: RANGER.collisionRadius }, obstacle)
@@ -269,6 +288,38 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private interpolatePickups(time: number, seconds: number): void {
+    const blend = 1 - Math.exp(-20 * seconds)
+    for (const view of this.pickups.values()) {
+      const distance = Phaser.Math.Distance.Between(view.sprite.x, view.sprite.y, view.targetX, view.targetY)
+      view.sprite.setPosition(
+        Phaser.Math.Linear(view.sprite.x, view.targetX, blend),
+        Phaser.Math.Linear(view.sprite.y, view.targetY, blend),
+      )
+      if (view.kind === 'experience') {
+        view.sprite.rotation += seconds * (distance > 4 ? 8 : 2)
+        const pulse = 1 + Math.sin(time / 130) * 0.08
+        view.sprite.setScale(distance > 4 ? pulse * 1.2 : pulse)
+      } else {
+        view.sprite.setY(view.sprite.y + Math.sin(time / 180) * 0.08)
+      }
+      view.sprite.setDepth(view.sprite.y)
+    }
+  }
+
+  private updatePickupAbsorptions(seconds: number): void {
+    for (let index = this.pickupAbsorptions.length - 1; index >= 0; index -= 1) {
+      const absorption = this.pickupAbsorptions[index]
+      absorption.elapsed += seconds
+      const progress = Math.min(1, absorption.elapsed / 0.14)
+      absorption.sprite.setScale(1.2 * (1 - progress)).setAlpha(1 - progress)
+      if (progress === 1) {
+        absorption.sprite.destroy()
+        this.pickupAbsorptions.splice(index, 1)
+      }
+    }
+  }
+
   private updateIndicators(): void {
     const camera = this.cameras.main
     for (const [playerId, view] of this.players) {
@@ -305,7 +356,16 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5)
 
     const indicator = isLocal ? null : this.createIndicator(player.displayName, color)
-    const view: PlayerView = { sprite, shadow, name, indicator, targetX: player.x, targetY: player.y, alive: player.alive }
+    const view: PlayerView = {
+      sprite,
+      shadow,
+      name,
+      indicator,
+      targetX: player.x,
+      targetY: player.y,
+      alive: player.alive,
+      movementSpeed: player.movementSpeed,
+    }
     this.players.set(player.id, view)
     return view
   }
@@ -357,14 +417,19 @@ export class GameScene extends Phaser.Scene {
   private syncPickups(pickups: SnapshotPickup[]): void {
     const active = new Set(pickups.map((pickup) => pickup.id))
     for (const pickup of pickups) {
-      if (!this.pickups.has(pickup.id)) {
-        this.pickups.set(pickup.id, this.add.image(pickup.x, pickup.y, 'experience').setDepth(pickup.y))
+      let view = this.pickups.get(pickup.id)
+      if (!view) {
+        const texture = pickup.kind === 'power_crate' ? 'power-crate' : 'experience'
+        view = { sprite: this.add.image(pickup.x, pickup.y, texture).setDepth(pickup.y), kind: pickup.kind, targetX: pickup.x, targetY: pickup.y }
+        this.pickups.set(pickup.id, view)
       }
+      view.targetX = pickup.x
+      view.targetY = pickup.y
     }
-    for (const [id, sprite] of this.pickups) {
+    for (const [id, view] of this.pickups) {
       if (!active.has(id)) {
-        sprite.destroy()
         this.pickups.delete(id)
+        this.pickupAbsorptions.push({ sprite: view.sprite, elapsed: 0 })
       }
     }
   }
@@ -398,6 +463,8 @@ export class GameScene extends Phaser.Scene {
 
   private cleanup(): void {
     this.session.bridge.setVirtualMovement(0, 0)
+    for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
+    this.pickupAbsorptions.length = 0
     this.unsubscribeNetwork?.()
     this.unsubscribeConnection?.()
     this.unsubscribeNetwork = null

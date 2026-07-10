@@ -85,6 +85,8 @@ export interface SnapshotPlayer {
   y: number
   velocityX: number
   velocityY: number
+  movementSpeed: number
+  armorPercent: number
   facing: 'left' | 'right'
   hp: number
   maxHp: number
@@ -103,6 +105,7 @@ export interface SnapshotMonster {
 
 export interface SnapshotPickup {
   id: number
+  kind: 'experience' | 'power_crate'
   x: number
   y: number
 }
@@ -118,6 +121,8 @@ export interface SnapshotPayload {
     experience: number
     experienceRequired: number
     totalKills: number
+    projectileCount: number
+    pickupRadius: number
   }
   remainingMs: number
 }
@@ -294,6 +299,8 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.f32(player.y)
     writer.f32(player.velocityX)
     writer.f32(player.velocityY)
+    writer.f32(player.movementSpeed)
+    writer.f32(player.armorPercent)
     writer.u8(Number(player.facing === 'left') | (Number(player.alive) << 1))
     writer.u16(player.hp)
     writer.u16(player.maxHp)
@@ -311,6 +318,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   writer.u16(payload.pickups.length)
   for (const pickup of payload.pickups) {
     writer.u32(pickup.id)
+    writer.u8(encodePickupKind(pickup.kind))
     writer.f32(pickup.x)
     writer.f32(pickup.y)
   }
@@ -318,6 +326,8 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   writer.u16(payload.team.experience)
   writer.u16(payload.team.experienceRequired)
   writer.u32(payload.team.totalKills)
+  writer.u8(payload.team.projectileCount)
+  writer.f32(payload.team.pickupRadius)
   writer.u32(payload.remainingMs)
 }
 
@@ -408,10 +418,12 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     const y = reader.f32()
     const velocityX = reader.f32()
     const velocityY = reader.f32()
+    const movementSpeed = reader.f32()
+    const armorPercent = reader.f32()
     const flags = reader.u8()
     if ((flags & ~3) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
     players.push({
-      id, displayName, x, y, velocityX, velocityY, facing: (flags & 1) !== 0 ? 'left' : 'right',
+      id, displayName, x, y, velocityX, velocityY, movementSpeed, armorPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
       alive: (flags & 2) !== 0, hp: reader.u16(), maxHp: reader.u16(),
       lastProcessedInput: reader.u32(), kills: reader.u32(),
     })
@@ -426,7 +438,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   if (pickupCount > 2048) throw new Error(`Pickup count exceeds limit: ${pickupCount}`)
   const pickups: SnapshotPickup[] = []
   for (let index = 0; index < pickupCount; index += 1) {
-    pickups.push({ id: reader.u32(), x: reader.f32(), y: reader.f32() })
+    pickups.push({ id: reader.u32(), kind: decodePickupKind(reader.u8()), x: reader.f32(), y: reader.f32() })
   }
   return {
     tick,
@@ -436,6 +448,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     pickups,
     team: {
       level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(),
+      projectileCount: reader.u8(), pickupRadius: reader.f32(),
     },
     remainingMs: reader.u32(),
   }
@@ -614,6 +627,16 @@ function decodeRemovalReason(value: number): ProjectileRemovedPayload['reason'] 
   if (value === 2) return 'range_expired'
   if (value === 3) return 'match_ended'
   throw new Error(`Unknown projectile removal reason: ${value}`)
+}
+
+function encodePickupKind(kind: SnapshotPickup['kind']): number {
+  return kind === 'experience' ? 0 : 1
+}
+
+function decodePickupKind(value: number): SnapshotPickup['kind'] {
+  if (value === 0) return 'experience'
+  if (value === 1) return 'power_crate'
+  throw new Error(`Unknown pickup kind: ${value}`)
 }
 
 function decodeOutcome(value: number): MatchEndedPayload['outcome'] {

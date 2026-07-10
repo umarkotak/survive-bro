@@ -49,7 +49,7 @@ Use a 50 ms fixed step and server time only. Send snapshots every second tick. P
 6. Move monsters and resolve obstacle collisions.
 7. Resolve attacks and contact damage.
 8. Process deaths and spawn XP.
-9. Collect pickups and process level-ups.
+9. Attract nearby XP crystals, collect pickups and power crates, and process level-ups.
 10. Spawn monsters.
 11. Check win/loss.
 12. Emit a snapshot when due.

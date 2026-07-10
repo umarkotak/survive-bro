@@ -86,6 +86,8 @@ playerCount u8
     displayName string
     x f32, y f32
     velocityX f32, velocityY f32
+    movementSpeed f32
+    armorPercent f32
     flags u8 (bit0 facing-left, bit1 alive)
     hp u16, maxHp u16
     lastProcessedInput u32
@@ -98,13 +100,18 @@ monsterCount u16
 pickupCount u16
   repeated pickup:
     id u32
+    kind u8 (0 experience, 1 power_crate)
     x f32, y f32
 teamLevel u16
 teamExperience u16
 teamExperienceRequired u16
 teamTotalKills u32
+teamProjectileCount u8
+teamPickupRadius f32
 remainingMs u32
 ```
+
+Level scaling is server-authoritative. Levels 1–4 fire 1–4 Arc Bolt trajectories and further levels stay capped at four. Each level above one also increases movement speed, armor, and XP-crystal magnet radius. Every twelfth team kill drops a power crate; collecting one adds a bounded random team haste, armor, or magnet stack. Snapshot stats include the resolved values after level and crate effects.
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 

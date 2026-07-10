@@ -49,9 +49,10 @@ type Projectile struct {
 }
 
 type Pickup struct {
-	ID uint64
-	X  float64
-	Y  float64
+	ID   uint64
+	Kind string
+	X    float64
+	Y    float64
 }
 
 type ProjectileRemoval struct {
@@ -66,22 +67,25 @@ type Events struct {
 }
 
 type Match struct {
-	StartedAt        time.Time
-	Tick             uint64
-	Players          map[string]*Player
-	Monsters         map[uint64]*Monster
-	Projectiles      map[uint64]*Projectile
-	Pickups          map[uint64]*Pickup
-	TeamLevel        int
-	TeamExperience   int
-	TotalKills       int
-	Elapsed          time.Duration
-	Finished         bool
-	spawnBudget      float64
-	nextMonsterID    uint64
-	nextProjectileID uint64
-	nextPickupID     uint64
-	rng              *rand.Rand
+	StartedAt         time.Time
+	Tick              uint64
+	Players           map[string]*Player
+	Monsters          map[uint64]*Monster
+	Projectiles       map[uint64]*Projectile
+	Pickups           map[uint64]*Pickup
+	TeamLevel         int
+	TeamExperience    int
+	TotalKills        int
+	PowerHasteStacks  int
+	PowerArmorStacks  int
+	PowerMagnetStacks int
+	Elapsed           time.Duration
+	Finished          bool
+	spawnBudget       float64
+	nextMonsterID     uint64
+	nextProjectileID  uint64
+	nextPickupID      uint64
+	rng               *rand.Rand
 }
 
 func NewMatch(startedAt time.Time, seed int64) *Match {
@@ -153,7 +157,7 @@ func (m *Match) Step(now time.Time) Events {
 	m.updateWeapons(&events)
 	m.updateProjectiles(&events)
 	m.updateMonsters()
-	m.collectPickups()
+	m.updatePickups()
 	m.spawnMonsters()
 
 	if m.Elapsed >= MatchDuration {
@@ -165,6 +169,8 @@ func (m *Match) Step(now time.Time) Events {
 }
 
 func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
+	movementSpeed := m.movementSpeed()
+	armorPercent := m.armorPercent()
 	players := make([]protocol.SnapshotPlayer, 0, len(m.Players))
 	playerIDs := make([]string, 0, len(m.Players))
 	for id := range m.Players {
@@ -180,6 +186,8 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 			Y:                  player.Y,
 			VelocityX:          player.VelocityX,
 			VelocityY:          player.VelocityY,
+			MovementSpeed:      movementSpeed,
+			ArmorPercent:       armorPercent,
 			Facing:             player.Facing,
 			HP:                 player.HP,
 			MaxHP:              PlayerMaxHP,
@@ -200,7 +208,7 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 	pickupIDs := sortedUint64Keys(m.Pickups)
 	for _, id := range pickupIDs {
 		pickup := m.Pickups[id]
-		pickups = append(pickups, protocol.SnapshotPickup{ID: id, X: pickup.X, Y: pickup.Y})
+		pickups = append(pickups, protocol.SnapshotPickup{ID: id, Kind: pickup.Kind, X: pickup.X, Y: pickup.Y})
 	}
 
 	remaining := max(time.Duration(0), MatchDuration-m.Elapsed)
@@ -215,12 +223,15 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 			Experience:         m.TeamExperience,
 			ExperienceRequired: RequiredExperience(m.TeamLevel),
 			TotalKills:         m.TotalKills,
+			ProjectileCount:    ProjectileCountAtLevel(m.TeamLevel),
+			PickupRadius:       m.pickupRadius(),
 		},
 		RemainingMs: remaining.Milliseconds(),
 	}
 }
 
 func (m *Match) updatePlayers(now time.Time) {
+	movementSpeed := m.movementSpeed()
 	for _, player := range m.Players {
 		if !player.Alive {
 			player.VelocityX = 0
@@ -231,8 +242,8 @@ func (m *Match) updatePlayers(now time.Time) {
 			player.MoveX = 0
 			player.MoveY = 0
 		}
-		player.VelocityX = player.MoveX * PlayerSpeed
-		player.VelocityY = player.MoveY * PlayerSpeed
+		player.VelocityX = player.MoveX * movementSpeed
+		player.VelocityY = player.MoveY * movementSpeed
 		if player.MoveX < 0 {
 			player.Facing = "left"
 		} else if player.MoveX > 0 {
@@ -261,29 +272,34 @@ func (m *Match) updateWeapons(events *Events) {
 		if target == nil {
 			continue
 		}
-		m.nextProjectileID++
-		angle := math.Atan2(target.Y-player.Y, target.X-player.X)
+		baseAngle := math.Atan2(target.Y-player.Y, target.X-player.X)
 		projectileSpeed := ProjectileSpeedAtLevel(m.TeamLevel)
-		projectile := &Projectile{
-			ID:        m.nextProjectileID,
-			OwnerID:   player.ID,
-			X:         player.X,
-			Y:         player.Y,
-			VelocityX: math.Cos(angle) * projectileSpeed,
-			VelocityY: math.Sin(angle) * projectileSpeed,
+		projectileCount := ProjectileCountAtLevel(m.TeamLevel)
+		spread := ProjectileSpread * math.Pi / 180
+		for index := range projectileCount {
+			angle := baseAngle + (float64(index)-float64(projectileCount-1)/2)*spread
+			m.nextProjectileID++
+			projectile := &Projectile{
+				ID:        m.nextProjectileID,
+				OwnerID:   player.ID,
+				X:         player.X,
+				Y:         player.Y,
+				VelocityX: math.Cos(angle) * projectileSpeed,
+				VelocityY: math.Sin(angle) * projectileSpeed,
+			}
+			m.Projectiles[projectile.ID] = projectile
+			events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{
+				ProjectileID: projectile.ID,
+				OwnerID:      player.ID,
+				WeaponID:     "arc_bolt",
+				X:            projectile.X,
+				Y:            projectile.Y,
+				VelocityX:    projectile.VelocityX,
+				VelocityY:    projectile.VelocityY,
+				SpawnTick:    m.Tick,
+			})
 		}
-		m.Projectiles[projectile.ID] = projectile
 		player.LastAttackAt = m.Elapsed
-		events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{
-			ProjectileID: projectile.ID,
-			OwnerID:      player.ID,
-			WeaponID:     "arc_bolt",
-			X:            projectile.X,
-			Y:            projectile.Y,
-			VelocityX:    projectile.VelocityX,
-			VelocityY:    projectile.VelocityY,
-			SpawnTick:    m.Tick,
-		})
 	}
 }
 
@@ -347,7 +363,8 @@ func (m *Match) updateMonsters() {
 				continue
 			}
 			monster.LastContact[player.ID] = m.Elapsed
-			player.HP = max(0, player.HP-MonsterContactDamage)
+			damage := max(1, int(math.Round(float64(MonsterContactDamage)*(1-m.armorPercent()))))
+			player.HP = max(0, player.HP-damage)
 			if player.HP == 0 {
 				player.Alive = false
 				player.MoveX = 0
@@ -357,16 +374,31 @@ func (m *Match) updateMonsters() {
 	}
 }
 
-func (m *Match) collectPickups() {
+func (m *Match) updatePickups() {
 	for pickupID, pickup := range m.Pickups {
-		collected := false
-		for _, player := range m.Players {
-			if player.Alive && math.Hypot(pickup.X-player.X, pickup.Y-player.Y) <= PlayerPickupRadius {
-				collected = true
-				break
+		if pickup.Kind == "power_crate" {
+			if m.nearestLivingPlayerWithin(pickup.X, pickup.Y, PowerCrateRadius) == nil {
+				continue
 			}
+			delete(m.Pickups, pickupID)
+			m.applyPowerCrate()
+			continue
 		}
-		if !collected {
+
+		player := m.nearestLivingPlayerWithin(pickup.X, pickup.Y, m.pickupRadius())
+		if player == nil {
+			continue
+		}
+		dx := player.X - pickup.X
+		dy := player.Y - pickup.Y
+		distance := math.Hypot(dx, dy)
+		if distance > 0 {
+			step := min(distance, PickupAttractSpeed*TickDuration.Seconds())
+			pickup.X += dx / distance * step
+			pickup.Y += dy / distance * step
+			distance -= step
+		}
+		if distance > PickupCollectRadius {
 			continue
 		}
 		delete(m.Pickups, pickupID)
@@ -431,11 +463,71 @@ func (m *Match) killMonster(monsterID uint64, ownerID string) {
 	monster := m.Monsters[monsterID]
 	delete(m.Monsters, monsterID)
 	m.nextPickupID++
-	m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, X: monster.X, Y: monster.Y}
+	m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, Kind: "experience", X: monster.X, Y: monster.Y}
 	m.TotalKills++
+	if m.TotalKills%PowerCrateEveryKills == 0 {
+		m.nextPickupID++
+		x, y := resolveWorldAndObstacles(monster.X+44, monster.Y, 18)
+		m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, Kind: "power_crate", X: x, Y: y}
+	}
 	if owner, ok := m.Players[ownerID]; ok {
 		owner.Kills++
 	}
+}
+
+func (m *Match) movementSpeed() float64 {
+	bonus := float64(max(0, m.TeamLevel-1))*LevelMovementBonus + float64(m.PowerHasteStacks)*PowerHasteBonus
+	return PlayerSpeed * (1 + min(MaximumMovementBonus, bonus))
+}
+
+func (m *Match) armorPercent() float64 {
+	bonus := float64(max(0, m.TeamLevel-1))*LevelArmorBonus + float64(m.PowerArmorStacks)*PowerArmorBonus
+	return min(MaximumArmorPercent, bonus)
+}
+
+func (m *Match) pickupRadius() float64 {
+	levelRadius := PlayerPickupRadius * (1 + float64(max(0, m.TeamLevel-1))*LevelMagnetBonus)
+	return min(MaximumPickupRadius, levelRadius+float64(m.PowerMagnetStacks)*PowerMagnetBonus)
+}
+
+func (m *Match) applyPowerCrate() {
+	available := make([]int, 0, 3)
+	if m.PowerHasteStacks < PowerMaximumStacks {
+		available = append(available, 0)
+	}
+	if m.PowerArmorStacks < PowerMaximumStacks {
+		available = append(available, 1)
+	}
+	if m.PowerMagnetStacks < PowerMaximumStacks {
+		available = append(available, 2)
+	}
+	if len(available) == 0 {
+		return
+	}
+	switch available[m.rng.Intn(len(available))] {
+	case 0:
+		m.PowerHasteStacks = min(PowerMaximumStacks, m.PowerHasteStacks+1)
+	case 1:
+		m.PowerArmorStacks = min(PowerMaximumStacks, m.PowerArmorStacks+1)
+	default:
+		m.PowerMagnetStacks = min(PowerMaximumStacks, m.PowerMagnetStacks+1)
+	}
+}
+
+func (m *Match) nearestLivingPlayerWithin(x, y, maximumDistance float64) *Player {
+	var nearest *Player
+	nearestDistance := maximumDistance
+	for _, player := range m.Players {
+		if !player.Alive {
+			continue
+		}
+		distance := math.Hypot(player.X-x, player.Y-y)
+		if distance <= nearestDistance {
+			nearest = player
+			nearestDistance = distance
+		}
+	}
+	return nearest
 }
 
 func (m *Match) finish(outcome string, events *Events) {
