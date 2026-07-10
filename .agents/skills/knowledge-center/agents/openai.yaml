@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knowledge Center"
+  short_description: "Navigate the Survive Bro source of truth"
+  default_prompt: "Use $knowledge-center to answer this project question from repository documentation."

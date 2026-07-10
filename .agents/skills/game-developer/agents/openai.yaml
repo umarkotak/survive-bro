@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Developer"
+  short_description: "Orchestrate multiplayer game development"
+  default_prompt: "Use $game-developer to plan and implement the next multiplayer game milestone."

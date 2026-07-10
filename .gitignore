@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+apps/backend/.gocache/
+apps/backend/bin/
+apps/backend/coverage.out
+
+apps/game/node_modules/
+apps/game/dist/
+apps/game/coverage/
