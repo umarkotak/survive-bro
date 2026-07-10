@@ -9,7 +9,7 @@ The backend foundation and initial room transport are implemented in `apps/backe
 - ByteDance Sonic as Fiber's global HTTP JSON encoder/decoder.
 - Official Fiber v3 WebSocket adapter.
 - Structured `slog` startup and request logs.
-- Live/readiness health and initial Prometheus text metrics.
+- Live/readiness health and Prometheus text metrics for tick/phase duration, entities, collision work, snapshots, encoded bytes, and WebSocket queues.
 - Idempotent named-room creation/lookup and inspection.
 - One actor goroutine per room.
 - Binary protocol-v2 WebSocket join, identity, ping/pong, input, snapshots, bounded writer queues, origin allowlist, and join/message limits.
@@ -73,6 +73,8 @@ GET  /ws/v2/rooms/{roomName}
 ```
 
 `PUT` canonicalizes a valid room name and returns whether it was created. Repeating it is safe. The legacy random-room `POST` remains available; inspecting a room never exposes player names.
+
+`GET /metrics` exposes the Checkpoint 1 observability baseline. Important series include `survive_bro_tick_duration_seconds`, `survive_bro_simulation_phase_seconds`, entity gauges, collision candidate/check/result counters, snapshot build/encode summaries, encoded-byte counters, WebSocket queue depth, dropped snapshots, and critical queue failures. The `broad_phase` phase intentionally reports zero until the spatial-hash checkpoint.
 
 ## Realtime codec evidence
 

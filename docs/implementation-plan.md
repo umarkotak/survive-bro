@@ -27,6 +27,22 @@ The repository now has a quick-play vertical slice spanning the room, movement, 
 
 This checkpoint does not complete the milestones below. Guardian selection, upgrades, reconnect, rematch, richer results, data-file validation, load evidence, and the full production gates remain open.
 
+## Hybrid simulation checkpoint roadmap
+
+| Checkpoint | Status | Manual gate |
+| --- | --- | --- |
+| 1. Observability baseline | Implemented; awaiting owner verification | Four clients expose server phase/entity/queue metrics and client `?debug=1` diagnostics sufficient to classify lag. |
+| 2. Swept collision | Blocked by Checkpoint 1 gate | Fast projectiles cannot tunnel through monsters or rocks. |
+| 3. 128-unit spatial broad phase | Pending | Candidate and narrow-phase counts fall without changing results. |
+| 4. Batched projectile replication | Pending | One multishot creates one spawn frame; removals and damage batch per tick. |
+| 5. Phaser rendering budget | Pending | Pools and culling keep desktop and portrait-phone play responsive. |
+| 6. Data-driven weapons and Guardian | Pending | Ranger and Guardian remain server-authoritative. |
+| 7. Individual choices | Pending | Offers are bounded, validated, non-pausing, and time out safely. |
+| 8. Lifecycle and reconnect | Pending | Refresh, spectating, results, and rematch agree across clients. |
+| 9. Performance evidence | Pending; requires explicit authorization | Record the 4-player/300-monster/2,000-projectile target without generalizing beyond measured hardware. |
+
+Do not begin a dependent checkpoint until the owner confirms the preceding manual gate. Do not run automated checks, builds, browser verification, or load tests unless explicitly requested.
+
 ## Working rules
 
 - Keep `apps/game` and `apps/backend` independently buildable and testable.

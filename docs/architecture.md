@@ -56,6 +56,8 @@ Use a 50 ms fixed step and server time only. Send snapshots every second tick. P
 
 Allow no more than three catch-up ticks. Log `room_tick_overrun` with room, entity counts, and duration.
 
+Checkpoint observability records total tick duration plus movement, weapon targeting, projectile movement, broad phase, narrow phase, enemy AI, pickup, and spawning durations. It also records collision candidates/checks/results, entity gauges, snapshot construction/encoding, encoded bytes, WebSocket enqueue duration, queue depth, dropped snapshots, and critical queue failures. Broad-phase duration remains zero until the spatial-hash checkpoint is implemented.
+
 Use circles and rectangles for collision. Add a 128-unit spatial hash for projectile/monster and pickup lookups before caps exceed roughly 200–300 entities.
 
 ## Network model

@@ -175,6 +175,26 @@ button, kbd { font: inherit; }
 .menu-icon { width: 16px; display: grid; gap: 3px; }
 .menu-icon i { display: block; height: 2px; border-radius: 99px; background: currentColor; }
 
+.diagnostics-panel {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 190px;
+  padding: 11px 12px;
+  border: 1px solid rgba(126, 238, 187, 0.24);
+  border-radius: 12px;
+  color: #dffbed;
+  background: rgba(3, 13, 9, 0.86);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+  font-variant-numeric: tabular-nums;
+}
+.diagnostics-panel > strong { display: block; margin-bottom: 7px; color: #80ece0; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.diagnostics-panel dl { margin: 0; display: grid; gap: 3px; }
+.diagnostics-panel dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.diagnostics-panel dt { color: #91a99a; font-size: 9px; }
+.diagnostics-panel dd { margin: 0; font-size: 9px; font-weight: 750; }
+
 .menu-backdrop {
   position: absolute;
   inset: 0;
@@ -292,6 +312,7 @@ button, kbd { font: inherit; }
   .health-heading strong { max-width: 104px; font-size: 10px; }
   .menu-toggle { top: 20px; right: 10px; min-height: 42px; padding: 0 12px; }
   .menu-toggle > span:last-child { display: none; }
+  .diagnostics-panel { right: 10px; bottom: 10px; width: 154px; }
 }
 
 @media (max-width: 720px), (hover: none) and (pointer: coarse) {

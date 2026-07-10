@@ -17,6 +17,7 @@
 - Levels 1–4 render 1–4 authoritative Arc Bolt trajectories, capped at four. Level and power-crate movement stats come from snapshots so local prediction uses the same resolved speed as the server.
 - XP crystals interpolate along the server-owned magnet pull toward a nearby player. Gold power crates render as distinct pickups and grant bounded haste, armor, or magnet effects.
 - React HUD updates through `GameBridge` at no more than 10 Hz; React does not render world entities or update every frame.
+- Optional Checkpoint 1 diagnostics at `?debug=1` show smoothed FPS, visible/active gameplay sprites, active projectiles, snapshot interval, binary decode time, heartbeat RTT, and latest frame bytes. The overlay and its Phaser counters stay disabled without that query parameter.
 
 The Go server owns movement, enemies, projectiles, damage, XP, and match outcome. The client sends normalized input intent only.
 

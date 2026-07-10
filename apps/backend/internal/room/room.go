@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"survive-bro/apps/backend/internal/observability"
 	"survive-bro/apps/backend/internal/protocol"
 	"survive-bro/apps/backend/internal/simulation"
 )
@@ -60,6 +61,7 @@ type Room struct {
 	commands chan any
 	done     chan struct{}
 	onClose  func(string, *Room)
+	metrics  *observability.Collector
 }
 
 type summaryCommand struct{ response chan Summary }
@@ -93,7 +95,7 @@ type leaveCommand struct {
 
 type closeCommand struct{ done chan struct{} }
 
-func newRoom(id, code string, ttl time.Duration, now func() time.Time, onClose func(string, *Room)) *Room {
+func newRoom(id, code string, ttl time.Duration, now func() time.Time, metrics *observability.Collector, onClose func(string, *Room)) *Room {
 	room := &Room{
 		id:       id,
 		code:     code,
@@ -102,6 +104,7 @@ func newRoom(id, code string, ttl time.Duration, now func() time.Time, onClose f
 		commands: make(chan any, 64),
 		done:     make(chan struct{}),
 		onClose:  onClose,
+		metrics:  metrics,
 	}
 	go room.run()
 	return room
@@ -265,6 +268,13 @@ func (r *Room) run() {
 				continue
 			}
 			events := match.Step(now)
+			r.metrics.RecordTick(observability.TickSample{
+				Room: r.code, Total: events.Metrics.Total, Movement: events.Metrics.Movement, Weapons: events.Metrics.Weapons,
+				ProjectileMove: events.Metrics.ProjectileMove, BroadPhase: events.Metrics.BroadPhase, NarrowPhase: events.Metrics.NarrowPhase,
+				EnemyAI: events.Metrics.EnemyAI, Pickups: events.Metrics.Pickups, Spawning: events.Metrics.Spawning,
+				Players: len(match.Players), Monsters: len(match.Monsters), Projectiles: len(match.Projectiles), PickupsCount: len(match.Pickups),
+				CandidatePairs: events.Metrics.CandidatePairs, NarrowChecks: events.Metrics.NarrowChecks, ConfirmedHits: events.Metrics.ConfirmedHits,
+			})
 			removedSlowClient := false
 			for _, playerID := range r.broadcastSimulationEvents(clients, events) {
 				removedSlowClient = r.removePlayer(clients, &hostPlayerID, match, playerID) || removedSlowClient
@@ -278,6 +288,7 @@ func (r *Room) run() {
 			if events.MatchEnded != nil {
 				r.broadcastAndPrune(clients, &hostPlayerID, match)
 			}
+			r.recordQueueDepth(clients)
 			if len(clients) == 0 {
 				match = nil
 				expiresAt = r.now().Add(r.ttl)
@@ -445,14 +456,20 @@ func (r *Room) broadcastSnapshot(clients map[string]*Player, match *simulation.M
 	if match == nil {
 		return
 	}
-	envelope, err := protocol.NewEnvelope(protocol.TypeSnapshot, "", match.Snapshot(r.now()))
+	snapshotStarted := time.Now()
+	snapshot := match.Snapshot(r.now())
+	r.metrics.RecordSnapshotBuild(time.Since(snapshotStarted))
+	envelope, err := protocol.NewEnvelope(protocol.TypeSnapshot, "", snapshot)
 	if err != nil {
 		return
 	}
+	enqueueStarted := time.Now()
+	defer func() { r.metrics.RecordWebSocketEnqueue(time.Since(enqueueStarted)) }()
 	for _, client := range clients {
 		select {
 		case client.Send <- envelope:
 		default:
+			r.metrics.RecordSnapshotReplaced()
 			// Snapshots are replaceable; critical events will disconnect a persistently slow client.
 		}
 	}
@@ -483,6 +500,8 @@ func (r *Room) broadcastRoomState(clients map[string]*Player, hostPlayerID strin
 }
 
 func (r *Room) sendCritical(clients map[string]*Player, playerID string, envelope protocol.Envelope) bool {
+	started := time.Now()
+	defer func() { r.metrics.RecordWebSocketEnqueue(time.Since(started)) }()
 	player, ok := clients[playerID]
 	if !ok {
 		return true
@@ -491,8 +510,20 @@ func (r *Room) sendCritical(clients map[string]*Player, playerID string, envelop
 	case player.Send <- envelope:
 		return true
 	default:
+		r.metrics.RecordCriticalQueueFailure()
 		return false
 	}
+}
+
+func (r *Room) recordQueueDepth(clients map[string]*Player) {
+	total := 0
+	maximum := 0
+	for _, player := range clients {
+		depth := len(player.Send)
+		total += depth
+		maximum = max(maximum, depth)
+	}
+	r.metrics.RecordRoomQueueDepth(r.code, total, maximum)
 }
 
 func (r *Room) broadcastAndPrune(clients map[string]*Player, hostPlayerID *string, match *simulation.Match) {

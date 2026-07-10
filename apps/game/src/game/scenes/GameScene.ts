@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 
+import { diagnosticsEnabled } from '../../config/diagnostics'
 import type { MultiplayerSession } from '../../network/MultiplayerSession'
 import type {
   Envelope,
@@ -76,6 +77,9 @@ export class GameScene extends Phaser.Scene {
   private cameraTargetId = ''
   private unsubscribeNetwork: (() => void) | null = null
   private unsubscribeConnection: (() => void) | null = null
+  private unsubscribeDiagnostics: (() => void) | null = null
+  private diagnosticsElapsed = 0
+  private smoothedFps = 0
 
   constructor(session: MultiplayerSession) {
     super('GameScene')
@@ -93,6 +97,12 @@ export class GameScene extends Phaser.Scene {
 
     this.unsubscribeNetwork = this.session.network.subscribe((message) => this.handleMessage(message))
     this.unsubscribeConnection = this.session.network.subscribeConnection((connection) => this.session.bridge.patch({ connection }))
+    if (diagnosticsEnabled) {
+      this.unsubscribeDiagnostics = this.session.network.subscribeDiagnostics((network) => {
+        const current = this.session.bridge.getSnapshot().diagnostics
+        this.session.bridge.patch({ diagnostics: { ...current, ...network } })
+      })
+    }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup())
   }
 
@@ -105,6 +115,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePickupAbsorptions(seconds)
     this.updateProjectiles(seconds)
     this.updateIndicators()
+    if (diagnosticsEnabled) this.updateDiagnostics(delta)
   }
 
   private handleMessage(message: Envelope): void {
@@ -337,6 +348,42 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateDiagnostics(delta: number): void {
+    const instantFps = delta > 0 ? 1000 / delta : 0
+    this.smoothedFps = this.smoothedFps === 0 ? instantFps : Phaser.Math.Linear(this.smoothedFps, instantFps, 0.08)
+    this.diagnosticsElapsed += delta
+    if (this.diagnosticsElapsed < 250) return
+    this.diagnosticsElapsed = 0
+
+    const camera = this.cameras.main.worldView
+    let activeSprites = 0
+    let visibleSprites = 0
+    const count = (sprite: Phaser.GameObjects.Image) => {
+      if (!sprite.active) return
+      activeSprites++
+      if (sprite.visible && sprite.x >= camera.x && sprite.x <= camera.x + camera.width && sprite.y >= camera.y && sprite.y <= camera.y + camera.height) {
+        visibleSprites++
+      }
+    }
+    for (const view of this.players.values()) count(view.sprite)
+    for (const view of this.monsters.values()) count(view.sprite)
+    for (const view of this.pickups.values()) count(view.sprite)
+    for (const view of this.projectiles.values()) count(view.sprite)
+    for (const absorption of this.pickupAbsorptions) count(absorption.sprite)
+    for (const obstacle of this.obstacleSprites) count(obstacle)
+
+    const current = this.session.bridge.getSnapshot().diagnostics
+    this.session.bridge.patch({
+      diagnostics: {
+        ...current,
+        fps: this.smoothedFps,
+        activeSprites,
+        visibleSprites,
+        projectiles: this.projectiles.size,
+      },
+    })
+  }
+
   private ensurePlayerView(player: SnapshotPlayer): PlayerView {
     const existing = this.players.get(player.id)
     if (existing) return existing
@@ -467,8 +514,10 @@ export class GameScene extends Phaser.Scene {
     this.pickupAbsorptions.length = 0
     this.unsubscribeNetwork?.()
     this.unsubscribeConnection?.()
+    this.unsubscribeDiagnostics?.()
     this.unsubscribeNetwork = null
     this.unsubscribeConnection = null
+    this.unsubscribeDiagnostics = null
   }
 }
 

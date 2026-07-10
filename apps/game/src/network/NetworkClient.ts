@@ -11,6 +11,13 @@ import { joinNetworkUrl, networkConfig } from '../config/network'
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected'
 export type MessageListener = (message: Envelope) => void
 export type ConnectionListener = (state: ConnectionState) => void
+export interface NetworkDiagnostics {
+  decodeMs: number
+  snapshotIntervalMs: number
+  roundTripMs: number
+  lastMessageBytes: number
+}
+export type DiagnosticsListener = (diagnostics: NetworkDiagnostics) => void
 
 const webSocketConnectTimeoutMs = 8_000
 
@@ -31,6 +38,10 @@ export class NetworkClient {
   private readonly messageListeners = new Set<MessageListener>()
   private readonly connectionListeners = new Set<ConnectionListener>()
   private readonly replayMessages = new Map<string, Envelope>()
+  private readonly diagnosticsListeners = new Set<DiagnosticsListener>()
+  private readonly pendingPings = new Map<string, number>()
+  private diagnostics: NetworkDiagnostics = { decodeMs: 0, snapshotIntervalMs: 0, roundTripMs: 0, lastMessageBytes: 0 }
+  private lastSnapshotAt = 0
   private heartbeat: number | null = null
   private requestSequence = 0
   playerId = ''
@@ -90,7 +101,21 @@ export class NetworkClient {
       socket.addEventListener('message', (event) => {
         try {
           if (!(event.data instanceof ArrayBuffer)) throw new Error('Server sent a non-binary WebSocket frame')
+          const decodeStarted = performance.now()
           const message = decodeEnvelope(event.data)
+          const receivedAt = performance.now()
+          this.diagnostics = { ...this.diagnostics, decodeMs: receivedAt - decodeStarted, lastMessageBytes: event.data.byteLength }
+          if (message.type === 'snapshot') {
+            this.diagnostics.snapshotIntervalMs = this.lastSnapshotAt === 0 ? 0 : receivedAt - this.lastSnapshotAt
+            this.lastSnapshotAt = receivedAt
+          } else if (message.type === 'pong' && message.requestId) {
+            const sentAt = this.pendingPings.get(message.requestId)
+            if (sentAt !== undefined) {
+              this.diagnostics.roundTripMs = receivedAt - sentAt
+              this.pendingPings.delete(message.requestId)
+            }
+          }
+          this.notifyDiagnostics()
           if (message.type === 'joined') {
             const joined = message.payload as JoinedPayload
             this.playerId = joined.playerId
@@ -147,6 +172,12 @@ export class NetworkClient {
     return () => this.connectionListeners.delete(listener)
   }
 
+  subscribeDiagnostics(listener: DiagnosticsListener): () => void {
+    this.diagnosticsListeners.add(listener)
+    listener({ ...this.diagnostics })
+    return () => this.diagnosticsListeners.delete(listener)
+  }
+
   sendInput(sequence: number, moveX: number, moveY: number): void {
     this.send(createEnvelope('input', { sequence, moveX, moveY }))
   }
@@ -159,6 +190,8 @@ export class NetworkClient {
     this.socket?.close()
     this.socket = null
     this.replayMessages.clear()
+    this.pendingPings.clear()
+    this.lastSnapshotAt = 0
     this.setConnectionState('disconnected')
   }
 
@@ -169,7 +202,9 @@ export class NetworkClient {
   private startHeartbeat(): void {
     this.stopHeartbeat()
     this.heartbeat = window.setInterval(() => {
-      this.send(createEnvelope('ping', {}, this.nextRequestId('ping')))
+      const requestId = this.nextRequestId('ping')
+      this.pendingPings.set(requestId, performance.now())
+      this.send(createEnvelope('ping', {}, requestId))
     }, 10_000)
   }
 
@@ -185,5 +220,9 @@ export class NetworkClient {
   private nextRequestId(prefix: string): string {
     this.requestSequence += 1
     return `${prefix}-${this.requestSequence}`
+  }
+
+  private notifyDiagnostics(): void {
+    for (const listener of this.diagnosticsListeners) listener({ ...this.diagnostics })
   }
 }

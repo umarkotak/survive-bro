@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 import type { GameHudState } from './bridge/GameBridge'
 import { GameCanvas } from './components/GameCanvas'
+import { diagnosticsEnabled } from './config/diagnostics'
 import { MultiplayerSession } from './network/MultiplayerSession'
 
 export function App() {
@@ -132,6 +133,21 @@ export function App() {
             <span className="menu-icon" aria-hidden="true"><i /><i /><i /></span>
             <span>Menu</span>
           </button>
+
+          {diagnosticsEnabled && (
+            <aside className="diagnostics-panel" aria-label="Game diagnostics">
+              <strong>Diagnostics</strong>
+              <dl>
+                <div><dt>FPS</dt><dd>{hud.diagnostics.fps.toFixed(0)}</dd></div>
+                <div><dt>Sprites</dt><dd>{hud.diagnostics.visibleSprites}/{hud.diagnostics.activeSprites}</dd></div>
+                <div><dt>Projectiles</dt><dd>{hud.diagnostics.projectiles}</dd></div>
+                <div><dt>Snapshot</dt><dd>{formatMetric(hud.diagnostics.snapshotIntervalMs, 'ms')}</dd></div>
+                <div><dt>Decode</dt><dd>{formatMetric(hud.diagnostics.decodeMs, 'ms', 2)}</dd></div>
+                <div><dt>RTT</dt><dd>{formatMetric(hud.diagnostics.roundTripMs, 'ms')}</dd></div>
+                <div><dt>Frame</dt><dd>{hud.diagnostics.lastMessageBytes} B</dd></div>
+              </dl>
+            </aside>
+          )}
         </div>
 
         {menuOpen && (
@@ -166,4 +182,8 @@ export function App() {
       </section>
     </main>
   )
+}
+
+function formatMetric(value: number, suffix: string, digits = 0): string {
+  return value > 0 ? `${value.toFixed(digits)} ${suffix}` : '—'
 }

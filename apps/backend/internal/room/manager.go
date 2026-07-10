@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"survive-bro/apps/backend/internal/observability"
 )
 
 const roomCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -16,17 +18,19 @@ var ErrNotFound = errors.New("room not found")
 var ErrInvalidRoomName = errors.New("room name must contain 1 to 24 letters, numbers, hyphens, or underscores")
 
 type Manager struct {
-	mu    sync.RWMutex
-	rooms map[string]*Room
-	ttl   time.Duration
-	now   func() time.Time
+	mu      sync.RWMutex
+	rooms   map[string]*Room
+	ttl     time.Duration
+	now     func() time.Time
+	metrics *observability.Collector
 }
 
 func NewManager(ttl time.Duration) *Manager {
 	return &Manager{
-		rooms: make(map[string]*Room),
-		ttl:   ttl,
-		now:   time.Now,
+		rooms:   make(map[string]*Room),
+		ttl:     ttl,
+		now:     time.Now,
+		metrics: observability.NewCollector(),
 	}
 }
 
@@ -46,7 +50,7 @@ func (m *Manager) Create() (*Room, error) {
 		if err != nil {
 			return nil, err
 		}
-		created := newRoom(id, code, m.ttl, m.now, m.remove)
+		created := newRoom(id, code, m.ttl, m.now, m.metrics, m.remove)
 		m.rooms[code] = created
 		return created, nil
 	}
@@ -68,7 +72,7 @@ func (m *Manager) Ensure(name string) (*Room, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	created := newRoom(id, normalized, m.ttl, m.now, m.remove)
+	created := newRoom(id, normalized, m.ttl, m.now, m.metrics, m.remove)
 	m.rooms[normalized] = created
 	return created, true, nil
 }
@@ -117,6 +121,8 @@ func (m *Manager) Count() int {
 	return len(m.rooms)
 }
 
+func (m *Manager) Metrics() *observability.Collector { return m.metrics }
+
 func (m *Manager) Close(ctx context.Context) error {
 	m.mu.RLock()
 	rooms := make([]*Room, 0, len(m.rooms))
@@ -138,6 +144,7 @@ func (m *Manager) remove(code string, target *Room) {
 	defer m.mu.Unlock()
 	if current, ok := m.rooms[code]; ok && current == target {
 		delete(m.rooms, code)
+		m.metrics.RemoveRoom(code)
 	}
 }
 

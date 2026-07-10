@@ -2,6 +2,17 @@ import type { ConnectionState } from '../network/NetworkClient'
 
 export type MatchOutcome = 'playing' | 'won' | 'lost'
 
+export interface GameDiagnostics {
+  fps: number
+  activeSprites: number
+  visibleSprites: number
+  projectiles: number
+  snapshotIntervalMs: number
+  decodeMs: number
+  roundTripMs: number
+  lastMessageBytes: number
+}
+
 export interface GameHudState {
   hp: number
   maxHp: number
@@ -17,6 +28,7 @@ export interface GameHudState {
   displayName: string
   connection: ConnectionState
   outcome: MatchOutcome
+  diagnostics: GameDiagnostics
 }
 
 type HudListener = (state: GameHudState) => void
@@ -36,6 +48,16 @@ const initialState: GameHudState = {
   displayName: '',
   connection: 'connecting',
   outcome: 'playing',
+  diagnostics: {
+    fps: 0,
+    activeSprites: 0,
+    visibleSprites: 0,
+    projectiles: 0,
+    snapshotIntervalMs: 0,
+    decodeMs: 0,
+    roundTripMs: 0,
+    lastMessageBytes: 0,
+  },
 }
 
 export class GameBridge {

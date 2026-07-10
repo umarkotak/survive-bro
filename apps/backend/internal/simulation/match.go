@@ -64,6 +64,22 @@ type Events struct {
 	SpawnedProjectiles []protocol.ProjectileSpawnedPayload
 	RemovedProjectiles []ProjectileRemoval
 	MatchEnded         *protocol.MatchEndedPayload
+	Metrics            TickMetrics
+}
+
+type TickMetrics struct {
+	Total          time.Duration
+	Movement       time.Duration
+	Weapons        time.Duration
+	ProjectileMove time.Duration
+	BroadPhase     time.Duration
+	NarrowPhase    time.Duration
+	EnemyAI        time.Duration
+	Pickups        time.Duration
+	Spawning       time.Duration
+	CandidatePairs uint64
+	NarrowChecks   uint64
+	ConfirmedHits  uint64
 }
 
 type Match struct {
@@ -150,21 +166,33 @@ func (m *Match) Step(now time.Time) Events {
 		return Events{}
 	}
 
+	tickStarted := time.Now()
 	m.Tick++
 	m.Elapsed += TickDuration
 	events := Events{}
+	phaseStarted := time.Now()
 	m.updatePlayers(now)
+	events.Metrics.Movement = time.Since(phaseStarted)
+	phaseStarted = time.Now()
 	m.updateWeapons(&events)
-	m.updateProjectiles(&events)
+	events.Metrics.Weapons = time.Since(phaseStarted)
+	m.updateProjectiles(&events, &events.Metrics)
+	phaseStarted = time.Now()
 	m.updateMonsters()
+	events.Metrics.EnemyAI = time.Since(phaseStarted)
+	phaseStarted = time.Now()
 	m.updatePickups()
+	events.Metrics.Pickups = time.Since(phaseStarted)
+	phaseStarted = time.Now()
 	m.spawnMonsters()
+	events.Metrics.Spawning = time.Since(phaseStarted)
 
 	if m.Elapsed >= MatchDuration {
 		m.finish("won", &events)
 	} else if !m.hasLivingPlayer() {
 		m.finish("lost", &events)
 	}
+	events.Metrics.Total = time.Since(tickStarted)
 	return events
 }
 
@@ -303,7 +331,8 @@ func (m *Match) updateWeapons(events *Events) {
 	}
 }
 
-func (m *Match) updateProjectiles(events *Events) {
+func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
+	moveStarted := time.Now()
 	for id, projectile := range m.Projectiles {
 		stepX := projectile.VelocityX * TickDuration.Seconds()
 		stepY := projectile.VelocityY * TickDuration.Seconds()
@@ -312,17 +341,28 @@ func (m *Match) updateProjectiles(events *Events) {
 		projectile.Travelled += math.Hypot(stepX, stepY)
 		if projectile.Travelled >= ProjectileRange {
 			m.removeProjectile(id, "range_expired", events)
-			continue
 		}
-		if collidesObstacle(projectile.X, projectile.Y, ProjectileRadius) {
+	}
+	metrics.ProjectileMove = time.Since(moveStarted)
+
+	narrowStarted := time.Now()
+	for id, projectile := range m.Projectiles {
+		obstacleHit, obstacleChecks := collidesObstacleCounted(projectile.X, projectile.Y, ProjectileRadius)
+		metrics.CandidatePairs += obstacleChecks
+		metrics.NarrowChecks += obstacleChecks
+		if obstacleHit {
+			metrics.ConfirmedHits++
 			m.removeProjectile(id, "obstacle_hit", events)
 			continue
 		}
 		for monsterID, monster := range m.Monsters {
+			metrics.CandidatePairs++
+			metrics.NarrowChecks++
 			if !overlaps(projectile.X, projectile.Y, ProjectileRadius, monster.X, monster.Y, MonsterRadius) {
 				continue
 			}
 			monster.HP -= WeaponDamage
+			metrics.ConfirmedHits++
 			m.removeProjectile(id, "enemy_hit", events)
 			if monster.HP <= 0 {
 				m.killMonster(monsterID, projectile.OwnerID)
@@ -330,6 +370,7 @@ func (m *Match) updateProjectiles(events *Events) {
 			break
 		}
 	}
+	metrics.NarrowPhase = time.Since(narrowStarted)
 }
 
 func (m *Match) updateMonsters() {
@@ -618,12 +659,19 @@ func resolveWorldAndObstacles(x, y, radius float64) (float64, float64) {
 }
 
 func collidesObstacle(x, y, radius float64) bool {
+	collides, _ := collidesObstacleCounted(x, y, radius)
+	return collides
+}
+
+func collidesObstacleCounted(x, y, radius float64) (bool, uint64) {
+	var checks uint64
 	for _, obstacle := range Obstacles {
+		checks++
 		if overlaps(x, y, radius, obstacle.X, obstacle.Y, obstacle.Radius) {
-			return true
+			return true, checks
 		}
 	}
-	return false
+	return false, checks
 }
 
 func overlaps(ax, ay, ar, bx, by, br float64) bool {

@@ -101,7 +101,7 @@ func (h *Handler) readiness(c fiber.Ctx) error {
 
 func (h *Handler) metrics(c fiber.Ctx) error {
 	c.Set(fiber.HeaderContentType, "text/plain; version=0.0.4; charset=utf-8")
-	return c.SendString(fmt.Sprintf("# TYPE survive_bro_active_rooms gauge\nsurvive_bro_active_rooms %d\n", h.rooms.Count()))
+	return c.SendString(h.rooms.Metrics().Render(h.rooms.Count()))
 }
 
 func (h *Handler) createRoom(c fiber.Ctx) error {
@@ -239,7 +239,9 @@ func (h *Handler) writeLoop(connection *websocket.Conn, outgoing <-chan protocol
 	defer connection.Close()
 	for message := range outgoing {
 		_ = connection.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		encodeStarted := time.Now()
 		encoded, err := protocol.Encode(message)
+		h.rooms.Metrics().RecordMessageEncode(time.Since(encodeStarted), len(encoded), message.Type == protocol.TypeSnapshot)
 		if err != nil {
 			h.logger.Error("encode_websocket_message", "error", err, "message_type", message.Type)
 			return
