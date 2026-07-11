@@ -90,8 +90,8 @@ func (h *Handler) listLevels(c fiber.Ctx) error {
 func (h *Handler) listCharacters(c fiber.Ctx) error {
 	items := make([]fiber.Map, 0)
 	for _, character := range simulation.AvailableCharacters() {
-		spell, _ := simulation.SpellByID(character.BaseSpellID)
-		items = append(items, fiber.Map{"id": character.ID, "name": character.Name, "spriteId": character.SpriteID, "maxHp": character.MaxHP, "armorPercent": character.ArmorPercent, "movementSpeed": character.MovementSpeed, "healthRegeneration": character.HealthRegeneration, "attackBuffPercent": character.AttackBuffPercent, "cooldownPercent": character.CooldownPercent, "baseSpell": fiber.Map{"id": spell.ID, "kind": spell.Kind, "damage": spell.Damage, "cooldownMs": spell.Cooldown.Milliseconds(), "projectileSpeed": spell.ProjectileSpeed, "burst": spell.Burst, "directions": spell.Directions, "beamLength": spell.BeamLength, "beamWidth": spell.BeamWidth, "durationMs": spell.Duration.Milliseconds(), "damageIntervalMs": spell.DamageInterval.Milliseconds()}})
+		spell, _ := simulation.SpellByID(character.DefaultSpellID)
+		items = append(items, fiber.Map{"id": character.ID, "name": character.Name, "spriteId": character.SpriteID, "maxHp": character.MaxHP, "armorPercent": character.ArmorPercent, "movementSpeed": character.MovementSpeed, "healthRegeneration": character.HealthRegeneration, "attackBuffPercent": character.AttackBuffPercent, "cooldownPercent": character.CooldownPercent, "defaultSpellId": character.DefaultSpellID, "startingSpellIds": character.StartingSpellIDs, "baseSpell": fiber.Map{"id": spell.ID, "kind": spell.Kind, "damage": spell.Damage, "impactDamage": spell.ImpactDamage, "cooldownMs": spell.Cooldown.Milliseconds(), "projectileSpeed": spell.ProjectileSpeed, "burst": spell.Burst, "directions": spell.Directions, "beamLength": spell.BeamLength, "beamWidth": spell.BeamWidth, "durationMs": spell.Duration.Milliseconds(), "damageIntervalMs": spell.DamageInterval.Milliseconds(), "explosionRadius": spell.ExplosionRadius, "explosionDurationMs": spell.ExplosionDuration.Milliseconds()}})
 	}
 	return c.JSON(fiber.Map{"characters": items})
 }

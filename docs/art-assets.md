@@ -75,6 +75,16 @@ Behavior:
 | Walk 3 | `public/assets/character-frieren-walk-3.png` | 256 x 256 |
 | Attack 1 | `public/assets/character-frieren-attack-1.png` | 256 x 256 |
 
+### Catapult
+
+| ID | Location | Canvas |
+| --- | --- | ---: |
+| Idle | `public/assets/character-catapult-idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character-catapult-walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character-catapult-walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character-catapult-walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character-catapult-attack-1.png` | 256 x 256 |
+
 ### Level 1 Slimes
 
 | ID | Location | Canvas |

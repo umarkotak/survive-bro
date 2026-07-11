@@ -55,6 +55,9 @@ Default address: `:3701`.
 | `HTTP_BODY_LIMIT_BYTES` | `65536` | HTTP request body ceiling |
 | `WS_MESSAGE_LIMIT_BYTES` | `16384` | WebSocket message ceiling |
 | `WS_CRITICAL_BUFFER` | `64` | Per-connection critical outgoing queue |
+| `GAME_DATA_PATH` | `../../game-data/game.json` | Content file loaded at startup, relative to `apps/backend` |
+
+`game-data/game.json` is the single editable content source. The server reads it once on startup, decodes it with Sonic, and validates characters, spells, enemies, levels, and events. There is no generated copy, embedding, or content cache. Restart after edits; existing rooms retain the level definition captured when they were created.
 
 HTTP endpoints allow requests from every origin and do not allow credentialed CORS requests. WebSocket origin validation is separate: WebSocket origins remain mandatory and must match `ALLOWED_ORIGINS`; non-browser socket clients must send an allowed `Origin` header.
 

@@ -16,6 +16,7 @@ const (
 	defaultShutdownTimeout  = 10 * time.Second
 	defaultHTTPBodyLimit    = 64 * 1024
 	defaultWebSocketMsgSize = 16 * 1024
+	defaultGameDataPath     = "../../game-data/game.json"
 )
 
 type Config struct {
@@ -27,6 +28,7 @@ type Config struct {
 	HTTPBodyLimitBytes      int
 	WebSocketMessageBytes   int64
 	WebSocketCriticalBuffer int
+	GameDataPath            string
 }
 
 func Load() (Config, error) {
@@ -39,6 +41,7 @@ func Load() (Config, error) {
 		HTTPBodyLimitBytes:      defaultHTTPBodyLimit,
 		WebSocketMessageBytes:   defaultWebSocketMsgSize,
 		WebSocketCriticalBuffer: 64,
+		GameDataPath:            envOrDefault("GAME_DATA_PATH", defaultGameDataPath),
 	}
 
 	var err error

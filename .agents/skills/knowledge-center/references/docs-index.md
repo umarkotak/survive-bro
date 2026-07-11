@@ -13,7 +13,7 @@ Paths are relative to the repository root.
 | Backend setup, environment, routes, and current implementation status | `docs/backend.md` | Implemented backend operating reference |
 | Game setup, offline loop, client boundaries, and current implementation status | `docs/game.md` | Implemented browser-game operating reference |
 | WebSocket envelope, messages, payload evolution | `contracts/websocket-events.md` | Initial shared contract inventory |
-| Global attributes and target content definitions | `game-data/game.json` | `design-contract` until a validated runtime loader replaces Go literals |
+| Global attributes and target content definitions | `game-data/game.json` | Characters, spells, enemies, and levels are generated into and loaded by the server; remaining sections are `design-contract` |
 | Repo-wide agent workflow | `AGENTS.md` | Binding repository instructions |
 | Client implementation | `apps/game` | Current browser behavior |
 | Server implementation | `apps/backend` | Current authoritative behavior |

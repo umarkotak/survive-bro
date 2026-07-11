@@ -6,7 +6,7 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 
 ## Client boundaries
 
-- React owns persisted username setup, room browsing/creation, HUD, connection state, results, and the touch joystick overlay.
+- React owns persisted username setup, room browsing/creation, HUD, connection state, results, and the touch joystick overlay. Room-browser polling is response-driven: only one room-list request may be in flight, and the next request is scheduled after the prior request settles.
 - Phaser owns the map, entities, camera, interpolation, local prediction, pooling, and visual effects.
 - `NetworkClient` owns socket lifecycle, envelopes, heartbeat, reconnect, decoding, and subscriptions.
 - `MultiplayerSession` owns room, identity, connection, match, and result state.
@@ -35,7 +35,7 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
+The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 
@@ -60,6 +60,8 @@ Checkpoint observability records total tick duration plus movement, weapon targe
 
 Use circles and rectangles for collision. Add a 128-unit spatial hash for projectile/monster and pickup lookups before caps exceed roughly 200–300 entities.
 
+Monster movement uses a deterministic 128-unit local grid for soft separation. It queries only neighboring cells, accumulates bounded corrections, and resolves the corrected positions against world obstacles; it does not introduce pairwise rigid-body physics.
+
 ## Network model
 
 Clients send normalized input intent with increasing sequence numbers immediately on change and at 20 Hz. The server zeros input after 250 ms without a refresh.
@@ -68,13 +70,17 @@ The local client predicts, stores unacknowledged inputs, accepts authoritative s
 
 Render remote entities about 100 ms behind using at least two snapshots. Projectiles use reliable spawn/remove events and client visual extrapolation; do not include projectile positions in every snapshot.
 
+Lingering beams and explosions are authoritative entities replicated as compact snapshot geometry. Characters reference reusable spell IDs rather than owning spell implementations. Players can hold multiple spell IDs, with one active default until inventory selection is implemented.
+
 The browser sets `binaryType = "arraybuffer"` and decodes frames directly with `DataView`. Go encodes and decodes with `encoding/binary`. Protocol v2 intentionally breaks JSON v1 compatibility, so client and server releases must deploy together.
 
 ## Content
 
 The target content model is one global glossary covering attributes, modifiers, characters, spells, buffs, enemies, levels/events, and future artifacts. Each player has five spell slots and five buff slots. Spell/buff levels resolve through the shared modifier engine; clients never calculate authoritative inventory effects.
 
-`game-data/game.json` is currently marked `design-contract`. The server must strictly decode and validate it before its status becomes `runtime` and before the existing Go literals are removed. Validation fails fast for duplicate IDs, missing references/assets, unsupported attributes/operations/targets, invalid progression, invalid finite/range values, invalid spawn points, or out-of-bounds obstacles. Public endpoints expose selection-safe data only.
+Spell definitions are reusable by players and enemies. Enemy spell loadouts select server-owned attacks; enemy projectiles target players and use the same bounded projectile lifecycle without transferring combat authority to clients.
+
+`game-data/game.json` is the single editable content source. The server reads it once at startup; characters, spells, enemies, and levels are decoded with Sonic and fail startup on invalid required values, references, event types, ordering, or timing. Buffs, modifiers, and inventory remain design contracts until those gameplay systems are implemented. Public endpoints expose selection-safe data only.
 
 ## Deployment evolution
 

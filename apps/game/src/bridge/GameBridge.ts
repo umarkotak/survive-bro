@@ -14,6 +14,8 @@ export interface GameDiagnostics {
   lastMessageBytes: number
 }
 
+export interface BossHudState { id: number; name: string; spriteId: string; hp: number; maxHp: number }
+
 export interface GameHudState {
   hp: number
   maxHp: number
@@ -23,6 +25,7 @@ export interface GameHudState {
   remainingMs: number
   kills: number
   enemies: number
+  bosses: BossHudState[]
   playerCount: number
   roomName: string
   playerId: string
@@ -59,6 +62,9 @@ export interface GameHudState {
   beamWidth: number
   spellDurationMs: number
   damageIntervalMs: number
+  explosionRadius: number
+  explosionDurationMs: number
+  impactDamage: number
   diagnostics: GameDiagnostics
 }
 
@@ -73,6 +79,7 @@ const initialState: GameHudState = {
   remainingMs: 6 * 60 * 1000,
   kills: 0,
   enemies: 0,
+  bosses: [],
   playerCount: 1,
   roomName: '',
   playerId: '',
@@ -97,7 +104,7 @@ const initialState: GameHudState = {
   baseMaxHp: 100, baseArmorPercent: 0, baseMovementSpeed: 220, baseHealthRegeneration: 0,
   baseAttackBuffPercent: 0, baseCooldownPercent: 0, baseSpellDamage: 20, baseProjectileSpeed: 700,
   baseSpellBurst: 1, baseSpellDirections: 1,
-  baseSpellCooldownMs: 750, beamLength: 0, beamWidth: 0, spellDurationMs: 0, damageIntervalMs: 0,
+  baseSpellCooldownMs: 750, beamLength: 0, beamWidth: 0, spellDurationMs: 0, damageIntervalMs: 0, explosionRadius: 0, explosionDurationMs: 0, impactDamage: 0,
   diagnostics: {
     fps: 0,
     activeSprites: 0,

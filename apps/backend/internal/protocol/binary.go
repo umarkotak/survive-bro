@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	maxDecodedPlayers   = 6
-	maxDecodedObstacles = 256
-	maxDecodedMonsters  = 1024
-	maxDecodedBeams     = 64
-	maxDecodedPickups   = 2048
+	maxDecodedPlayers    = 6
+	maxDecodedObstacles  = 256
+	maxDecodedMonsters   = 1024
+	maxDecodedBeams      = 64
+	maxDecodedExplosions = 256
+	maxDecodedMeteors    = 256
+	maxDecodedPickups    = 2048
 )
 
 func Encode(envelope Envelope) ([]byte, error) {
@@ -493,16 +495,21 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		if err := e.string(monster.TypeID); err != nil {
 			return err
 		}
-		hp, err := nonNegativeUint16(monster.HP, "monster hp")
+		hp, err := nonNegativeUint32Int(monster.HP, "monster hp")
 		if err != nil {
 			return err
 		}
-		maxHP, err := nonNegativeUint16(monster.MaxHP, "monster max hp")
+		maxHP, err := nonNegativeUint32Int(monster.MaxHP, "monster max hp")
 		if err != nil {
 			return err
 		}
-		e.u16(hp)
-		e.u16(maxHP)
+		e.u32(hp)
+		e.u32(maxHP)
+		var monsterFlags uint8
+		if monster.IsBoss {
+			monsterFlags |= 1
+		}
+		e.u8(monsterFlags)
 	}
 	if len(value.Beams) > math.MaxUint16 {
 		return fmt.Errorf("beam count exceeds 65535")
@@ -529,6 +536,59 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		if err != nil {
 			return err
 		}
+		e.u32(remaining)
+	}
+	if len(value.Explosions) > math.MaxUint16 {
+		return fmt.Errorf("explosion count exceeds 65535")
+	}
+	e.u16(uint16(len(value.Explosions)))
+	for _, explosion := range value.Explosions {
+		id, err := uint32Value(explosion.ID, "explosion ID")
+		if err != nil {
+			return err
+		}
+		e.u32(id)
+		if err := e.string(explosion.OwnerID); err != nil {
+			return err
+		}
+		if err := e.string(explosion.SpellID); err != nil {
+			return err
+		}
+		for _, field := range []float64{explosion.X, explosion.Y, explosion.Radius} {
+			if err := e.f32(field); err != nil {
+				return err
+			}
+		}
+		remaining, err := nonNegativeUint32(explosion.RemainingMs, "explosion remaining ms")
+		if err != nil {
+			return err
+		}
+		e.u32(remaining)
+	}
+	if len(value.Meteors) > math.MaxUint16 {
+		return fmt.Errorf("meteor count exceeds 65535")
+	}
+	e.u16(uint16(len(value.Meteors)))
+	for _, meteor := range value.Meteors {
+		id, err := uint32Value(meteor.ID, "meteor ID")
+		if err != nil {
+			return err
+		}
+		e.u32(id)
+		for _, field := range []float64{meteor.X, meteor.Y, meteor.Radius} {
+			if err := e.f32(field); err != nil {
+				return err
+			}
+		}
+		impact, err := nonNegativeUint32(meteor.ImpactInMs, "meteor impact ms")
+		if err != nil {
+			return err
+		}
+		remaining, err := nonNegativeUint32(meteor.RemainingMs, "meteor remaining ms")
+		if err != nil {
+			return err
+		}
+		e.u32(impact)
 		e.u32(remaining)
 	}
 	if len(value.Pickups) > math.MaxUint16 {
@@ -984,15 +1044,22 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
-		hp, err := d.u16()
+		hp, err := d.u32()
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
-		maxHP, err := d.u16()
+		maxHP, err := d.u32()
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
-		monsters = append(monsters, SnapshotMonster{ID: uint64(id), TypeID: typeID, X: x, Y: y, HP: int(hp), MaxHP: int(maxHP)})
+		flags, err := d.u8()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		if flags&^uint8(1) != 0 {
+			return SnapshotPayload{}, fmt.Errorf("invalid monster flags %d", flags)
+		}
+		monsters = append(monsters, SnapshotMonster{ID: uint64(id), TypeID: typeID, X: x, Y: y, HP: int(hp), MaxHP: int(maxHP), IsBoss: flags&1 != 0})
 	}
 	beamCount, err := d.u16()
 	if err != nil {
@@ -1027,6 +1094,80 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 			return SnapshotPayload{}, err
 		}
 		beams = append(beams, SnapshotBeam{ID: uint64(id), OwnerID: ownerID, SpellID: spellID, X: values[0], Y: values[1], Angle: values[2], Length: values[3], Width: values[4], RemainingMs: int64(remaining)})
+	}
+	explosionCount, err := d.u16()
+	if err != nil {
+		return SnapshotPayload{}, err
+	}
+	if explosionCount > maxDecodedExplosions {
+		return SnapshotPayload{}, fmt.Errorf("explosion count %d exceeds limit", explosionCount)
+	}
+	explosions := make([]SnapshotExplosion, 0, explosionCount)
+	for range explosionCount {
+		id, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		ownerID, err := d.string()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		spellID, err := d.string()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		x, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		y, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		radius, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		remaining, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		explosions = append(explosions, SnapshotExplosion{ID: uint64(id), OwnerID: ownerID, SpellID: spellID, X: x, Y: y, Radius: radius, RemainingMs: int64(remaining)})
+	}
+	meteorCount, err := d.u16()
+	if err != nil {
+		return SnapshotPayload{}, err
+	}
+	if meteorCount > maxDecodedMeteors {
+		return SnapshotPayload{}, fmt.Errorf("meteor count %d exceeds limit", meteorCount)
+	}
+	meteors := make([]SnapshotMeteor, 0, meteorCount)
+	for range meteorCount {
+		id, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		x, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		y, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		radius, err := d.f32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		impact, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		remaining, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		meteors = append(meteors, SnapshotMeteor{ID: uint64(id), X: x, Y: y, Radius: radius, ImpactInMs: int64(impact), RemainingMs: int64(remaining)})
 	}
 	pickupCount, err := d.u16()
 	if err != nil {
@@ -1080,7 +1221,7 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		return SnapshotPayload{}, err
 	}
 	return SnapshotPayload{
-		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Beams: beams, Pickups: pickups,
+		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Beams: beams, Explosions: explosions, Meteors: meteors, Pickups: pickups,
 		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills)},
 		RemainingMs: int64(remaining),
 	}, nil
@@ -1218,6 +1359,8 @@ func encodeRemovalReason(value string) (uint8, error) {
 		return 2, nil
 	case "match_ended":
 		return 3, nil
+	case "player_hit":
+		return 4, nil
 	default:
 		return 0, fmt.Errorf("unknown projectile removal reason %q", value)
 	}
@@ -1233,6 +1376,8 @@ func decodeRemovalReason(value uint8) (string, error) {
 		return "range_expired", nil
 	case 3:
 		return "match_ended", nil
+	case 4:
+		return "player_hit", nil
 	default:
 		return "", fmt.Errorf("unknown projectile removal reason %d", value)
 	}

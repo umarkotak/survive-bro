@@ -135,6 +135,7 @@ type SnapshotMonster struct {
 	Y      float64 `json:"y"`
 	HP     int     `json:"hp"`
 	MaxHP  int     `json:"maxHp"`
+	IsBoss bool    `json:"isBoss"`
 }
 
 type SnapshotBeam struct {
@@ -146,6 +147,25 @@ type SnapshotBeam struct {
 	Angle       float64 `json:"angle"`
 	Length      float64 `json:"length"`
 	Width       float64 `json:"width"`
+	RemainingMs int64   `json:"remainingMs"`
+}
+
+type SnapshotExplosion struct {
+	ID          uint64  `json:"id"`
+	OwnerID     string  `json:"ownerId"`
+	SpellID     string  `json:"spellId"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Radius      float64 `json:"radius"`
+	RemainingMs int64   `json:"remainingMs"`
+}
+
+type SnapshotMeteor struct {
+	ID          uint64  `json:"id"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Radius      float64 `json:"radius"`
+	ImpactInMs  int64   `json:"impactInMs"`
 	RemainingMs int64   `json:"remainingMs"`
 }
 
@@ -166,14 +186,16 @@ type SnapshotTeam struct {
 }
 
 type SnapshotPayload struct {
-	Tick         uint64            `json:"tick"`
-	ServerTimeMs int64             `json:"serverTimeMs"`
-	Players      []SnapshotPlayer  `json:"players"`
-	Monsters     []SnapshotMonster `json:"monsters"`
-	Beams        []SnapshotBeam    `json:"beams"`
-	Pickups      []SnapshotPickup  `json:"pickups"`
-	Team         SnapshotTeam      `json:"team"`
-	RemainingMs  int64             `json:"remainingMs"`
+	Tick         uint64              `json:"tick"`
+	ServerTimeMs int64               `json:"serverTimeMs"`
+	Players      []SnapshotPlayer    `json:"players"`
+	Monsters     []SnapshotMonster   `json:"monsters"`
+	Beams        []SnapshotBeam      `json:"beams"`
+	Explosions   []SnapshotExplosion `json:"explosions"`
+	Meteors      []SnapshotMeteor    `json:"meteors"`
+	Pickups      []SnapshotPickup    `json:"pickups"`
+	Team         SnapshotTeam        `json:"team"`
+	RemainingMs  int64               `json:"remainingMs"`
 }
 
 type ProjectileSpawnedPayload struct {

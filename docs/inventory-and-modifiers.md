@@ -1,6 +1,6 @@
 # Inventory and Modifier Model
 
-The canonical design contract is `game-data/game.json`. It centralizes vocabulary and content shapes before the runtime loader replaces the current Go definitions.
+The canonical content source is `game-data/game.json`. Character, spell, enemy, and level sections are loaded directly at server startup. Inventory, buffs, and modifier evaluation remain design contracts until the inventory milestone replaces direct random upgrades.
 
 ## Inventory
 
@@ -79,15 +79,28 @@ Frieren starts with Soul Track level 1. It is a lingering beam rather than a mov
 | 6 | Directions `+1`. |
 | 7 | Damage `+6`. |
 
+## Rocket progression
+
+Catapult starts with Rocket level 1. Rocket remains an independent spell that may later be acquired by another character.
+
+| Level | Change |
+| ---: | --- |
+| 1 | 20 impact damage, 30 explosion-tick damage, 480 speed, 850 range, 80 blast radius, 1 second linger, 0.5 second damage interval, 1.6 second cooldown. |
+| 2 | Damage `+8`. |
+| 3 | Explosion radius `+20`. |
+| 4 | Explosion linger `+250 ms`. |
+| 5 | Cooldown `-150 ms`. |
+| 6 | Projectile speed `+60`. |
+| 7 | Directions `+1`. |
+
 ## Runtime migration checkpoint
 
-`game-data/game.json` currently has status `design-contract`; existing gameplay is still read from Go definitions. Before inventory gameplay is enabled:
+Base character, spell, enemy, and level content is already loaded from JSON at startup. Before inventory gameplay is enabled:
 
-1. Add strict Sonic decoding and startup validation for the JSON.
-2. Reject unknown attributes, operations, targets, references, event types, assets, duplicate IDs, invalid caps, and progression gaps.
-3. Replace Go content literals with validated immutable data.
-4. Add binary inventory snapshots and authoritative reward-applied events.
-5. Replace the existing direct random attribute upgrade switch with inventory add/level operations.
-6. Add the 5-spell/5-buff inventory UI and manual acceptance gate.
+1. Extend startup validation to modifiers, buffs, progression references, caps, and progression gaps.
+2. Decode modifiers, buffs, and spell-level progression into immutable runtime data.
+3. Add binary inventory snapshots and authoritative reward-applied events.
+4. Replace the existing direct random attribute upgrade switch with inventory add/level operations.
+5. Add the 5-spell/5-buff inventory UI and manual acceptance gate.
 
 Keeping this migration explicit prevents two simultaneous sources of gameplay truth.

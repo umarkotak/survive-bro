@@ -28,7 +28,7 @@ Resolve conflicts in this order:
 
 1. The user's latest explicit instruction.
 2. `contracts/` for messages crossing the client/server boundary.
-3. `game-data/` entries whose top-level status is `runtime` for loaded gameplay values. Entries marked `design-contract` define the accepted target schema but do not override current implemented values until the runtime migration lands.
+3. `game-data/` entries whose top-level status is `runtime`, plus sections explicitly listed in `runtimeSections`, for loaded gameplay values. Other entries under `design-contract` remain target schema only.
 4. `docs/mvp-spec.md` for product behavior and limits.
 5. `docs/architecture.md` for system boundaries and invariants.
 6. `docs/implementation-plan.md` for sequencing and acceptance gates.

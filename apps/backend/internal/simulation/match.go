@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strconv"
 	"time"
 
 	"survive-bro/apps/backend/internal/protocol"
@@ -16,6 +17,7 @@ type Player struct {
 	ID                     string
 	DisplayName            string
 	CharacterID            string
+	SpellIDs               []string
 	SpellID                string
 	X                      float64
 	Y                      float64
@@ -45,6 +47,9 @@ type Player struct {
 	BeamWidth              float64
 	SpellDuration          time.Duration
 	DamageInterval         time.Duration
+	ExplosionRadius        float64
+	ExplosionDuration      time.Duration
+	ImpactDamage           int
 	SpellCooldown          time.Duration
 	SpellRange             float64
 	ProjectileRadius       float64
@@ -62,32 +67,42 @@ type Player struct {
 }
 
 type Monster struct {
-	ID            uint64
-	TypeID        string
-	X             float64
-	Y             float64
-	HP            int
-	MaxHP         int
-	Speed         float64
-	Radius        float64
-	ContactDamage int
-	ContactDelay  time.Duration
-	Experience    int
-	Score         int
-	LastContact   map[string]time.Duration
+	ID                     uint64
+	TypeID                 string
+	X                      float64
+	Y                      float64
+	HP                     int
+	MaxHP                  int
+	Speed                  float64
+	Radius                 float64
+	ContactDamage          int
+	Armor                  int
+	ContactDelay           time.Duration
+	Experience             int
+	Score                  int
+	LastContact            map[string]time.Duration
+	SpellIDs               []string
+	LastSpellAt            time.Duration
+	AttackDamageMultiplier float64
 }
 
 type Projectile struct {
-	ID        uint64
-	OwnerID   string
-	X         float64
-	Y         float64
-	VelocityX float64
-	VelocityY float64
-	Travelled float64
-	Damage    int
-	Range     float64
-	Radius    float64
+	ID                uint64
+	OwnerID           string
+	X                 float64
+	Y                 float64
+	VelocityX         float64
+	VelocityY         float64
+	Travelled         float64
+	Damage            int
+	Range             float64
+	Radius            float64
+	SpellID           string
+	ExplosionRadius   float64
+	ExplosionDuration time.Duration
+	DamageInterval    time.Duration
+	ImpactDamage      int
+	TargetsPlayers    bool
 }
 
 type Beam struct {
@@ -103,6 +118,37 @@ type Beam struct {
 	DamageInterval time.Duration
 	ExpiresAt      time.Duration
 	LastDamage     map[uint64]time.Duration
+}
+
+type Explosion struct {
+	ID             uint64
+	OwnerID        string
+	SpellID        string
+	X              float64
+	Y              float64
+	Radius         float64
+	Damage         int
+	DamageInterval time.Duration
+	ExpiresAt      time.Duration
+	LastDamage     map[uint64]time.Duration
+}
+
+type Meteor struct {
+	ID             uint64
+	X              float64
+	Y              float64
+	Radius         float64
+	Damage         int
+	ImpactAt       time.Duration
+	ExpiresAt      time.Duration
+	DamageInterval time.Duration
+	LastDamage     map[string]time.Duration
+}
+
+type activeMeteorShower struct {
+	Definition MeteorShowerDefinition
+	EndsAt     time.Duration
+	Budget     float64
 }
 
 type Pickup struct {
@@ -148,6 +194,8 @@ type Match struct {
 	Monsters                map[uint64]*Monster
 	Projectiles             map[uint64]*Projectile
 	Beams                   map[uint64]*Beam
+	Explosions              map[uint64]*Explosion
+	Meteors                 map[uint64]*Meteor
 	Pickups                 map[uint64]*Pickup
 	TeamLevel               int
 	TeamExperience          int
@@ -159,13 +207,18 @@ type Match struct {
 	activeSpawn             SpawnRateDefinition
 	monsterHealthMultiplier float64
 	monsterSpeedMultiplier  float64
+	endingBossIDs           map[uint64]struct{}
+	bossMonsterIDs          map[uint64]struct{}
 	nextLevelEvent          int
 	spawnBudget             float64
 	nextMonsterID           uint64
 	nextProjectileID        uint64
 	nextBeamID              uint64
+	nextExplosionID         uint64
+	nextMeteorID            uint64
 	nextPickupID            uint64
 	rng                     *rand.Rand
+	meteorShowers           []activeMeteorShower
 }
 
 func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match {
@@ -179,10 +232,14 @@ func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match
 		Monsters:                make(map[uint64]*Monster),
 		Projectiles:             make(map[uint64]*Projectile),
 		Beams:                   make(map[uint64]*Beam),
+		Explosions:              make(map[uint64]*Explosion),
+		Meteors:                 make(map[uint64]*Meteor),
 		Pickups:                 make(map[uint64]*Pickup),
 		TeamLevel:               1,
 		monsterHealthMultiplier: 1,
 		monsterSpeedMultiplier:  1,
+		endingBossIDs:           make(map[uint64]struct{}),
+		bossMonsterIDs:          make(map[uint64]struct{}),
 		Level:                   level,
 		rng:                     rand.New(rand.NewSource(seed)),
 	}
@@ -199,13 +256,14 @@ func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ..
 	if !ok {
 		character = characters["ranger"]
 	}
-	spell, _ := SpellByID(character.BaseSpellID)
+	spell, _ := SpellByID(character.DefaultSpellID)
 	order := len(m.Players)
 	angle := float64(order) * (2 * math.Pi / 6)
 	player := &Player{
 		ID:                 id,
 		DisplayName:        displayName,
 		CharacterID:        character.ID,
+		SpellIDs:           append([]string(nil), character.StartingSpellIDs...),
 		SpellID:            spell.ID,
 		X:                  PlayerSpawnX + math.Cos(angle)*PlayerSpawnRadius,
 		Y:                  PlayerSpawnY + math.Sin(angle)*PlayerSpawnRadius,
@@ -226,6 +284,9 @@ func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ..
 		BeamWidth:          spell.BeamWidth,
 		SpellDuration:      spell.Duration,
 		DamageInterval:     spell.DamageInterval,
+		ExplosionRadius:    spell.ExplosionRadius,
+		ExplosionDuration:  spell.ExplosionDuration,
+		ImpactDamage:       spell.ImpactDamage,
 		SpellCooldown:      spell.Cooldown,
 		SpellRange:         spell.Range,
 		ProjectileRadius:   spell.Radius,
@@ -284,8 +345,14 @@ func (m *Match) Step(now time.Time) Events {
 	events.Metrics.Weapons = time.Since(phaseStarted)
 	m.updateBeams(&events, &events.Metrics)
 	m.updateProjectiles(&events, &events.Metrics)
+	m.updateExplosions(&events, &events.Metrics)
+	m.updateMeteors()
+	if m.Finished {
+		events.Metrics.Total = time.Since(tickStarted)
+		return events
+	}
 	phaseStarted = time.Now()
-	m.updateMonsters()
+	m.updateMonsters(&events)
 	events.Metrics.EnemyAI = time.Since(phaseStarted)
 	phaseStarted = time.Now()
 	m.updatePickups(&events)
@@ -341,13 +408,24 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 	monsterIDs := sortedUint64Keys(m.Monsters)
 	for _, id := range monsterIDs {
 		monster := m.Monsters[id]
-		monsters = append(monsters, protocol.SnapshotMonster{ID: id, TypeID: monster.TypeID, X: monster.X, Y: monster.Y, HP: monster.HP, MaxHP: monster.MaxHP})
+		_, isBoss := m.bossMonsterIDs[id]
+		monsters = append(monsters, protocol.SnapshotMonster{ID: id, TypeID: monster.TypeID, X: monster.X, Y: monster.Y, HP: monster.HP, MaxHP: monster.MaxHP, IsBoss: isBoss})
 	}
 	beams := make([]protocol.SnapshotBeam, 0, len(m.Beams))
 	beamIDs := sortedUint64Keys(m.Beams)
 	for _, id := range beamIDs {
 		beam := m.Beams[id]
 		beams = append(beams, protocol.SnapshotBeam{ID: id, OwnerID: beam.OwnerID, SpellID: beam.SpellID, X: beam.X, Y: beam.Y, Angle: beam.Angle, Length: beam.Length, Width: beam.Width, RemainingMs: max(int64(0), (beam.ExpiresAt - m.Elapsed).Milliseconds())})
+	}
+	explosions := make([]protocol.SnapshotExplosion, 0, len(m.Explosions))
+	for _, id := range sortedUint64Keys(m.Explosions) {
+		explosion := m.Explosions[id]
+		explosions = append(explosions, protocol.SnapshotExplosion{ID: id, OwnerID: explosion.OwnerID, SpellID: explosion.SpellID, X: explosion.X, Y: explosion.Y, Radius: explosion.Radius, RemainingMs: max(int64(0), (explosion.ExpiresAt - m.Elapsed).Milliseconds())})
+	}
+	meteors := make([]protocol.SnapshotMeteor, 0, len(m.Meteors))
+	for _, id := range sortedUint64Keys(m.Meteors) {
+		meteor := m.Meteors[id]
+		meteors = append(meteors, protocol.SnapshotMeteor{ID: id, X: meteor.X, Y: meteor.Y, Radius: meteor.Radius, ImpactInMs: max(int64(0), (meteor.ImpactAt - m.Elapsed).Milliseconds()), RemainingMs: max(int64(0), (meteor.ExpiresAt - m.Elapsed).Milliseconds())})
 	}
 
 	pickups := make([]protocol.SnapshotPickup, 0, len(m.Pickups))
@@ -364,6 +442,8 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 		Players:      players,
 		Monsters:     monsters,
 		Beams:        beams,
+		Explosions:   explosions,
+		Meteors:      meteors,
 		Pickups:      pickups,
 		Team: protocol.SnapshotTeam{
 			Level:              m.TeamLevel,
@@ -442,15 +522,20 @@ func (m *Match) updateWeapons(events *Events) {
 				angle := trajectory + (float64(burst)-float64(player.SpellBurst-1)/2)*(3*math.Pi/180)
 				m.nextProjectileID++
 				projectile := &Projectile{
-					ID:        m.nextProjectileID,
-					OwnerID:   player.ID,
-					X:         player.X,
-					Y:         player.Y,
-					VelocityX: math.Cos(angle) * player.ProjectileSpeed,
-					VelocityY: math.Sin(angle) * player.ProjectileSpeed,
-					Damage:    int(math.Round(float64(player.SpellDamage) * (1 + player.AttackBuffPercent))),
-					Range:     player.SpellRange,
-					Radius:    player.ProjectileRadius,
+					ID:                m.nextProjectileID,
+					OwnerID:           player.ID,
+					X:                 player.X,
+					Y:                 player.Y,
+					VelocityX:         math.Cos(angle) * player.ProjectileSpeed,
+					VelocityY:         math.Sin(angle) * player.ProjectileSpeed,
+					Damage:            int(math.Round(float64(player.SpellDamage) * (1 + player.AttackBuffPercent))),
+					Range:             player.SpellRange,
+					Radius:            player.ProjectileRadius,
+					SpellID:           player.SpellID,
+					ExplosionRadius:   player.ExplosionRadius,
+					ExplosionDuration: player.ExplosionDuration,
+					DamageInterval:    player.DamageInterval,
+					ImpactDamage:      int(math.Round(float64(player.ImpactDamage) * (1 + player.AttackBuffPercent))),
 				}
 				m.Projectiles[projectile.ID] = projectile
 				events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{
@@ -478,6 +563,7 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 		projectile.Y += stepY
 		projectile.Travelled += math.Hypot(stepX, stepY)
 		if projectile.Travelled >= projectile.Range {
+			m.createExplosion(projectile)
 			m.removeProjectile(id, "range_expired", events)
 		}
 	}
@@ -490,7 +576,26 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 		metrics.NarrowChecks += obstacleChecks
 		if obstacleHit {
 			metrics.ConfirmedHits++
+			m.createExplosion(projectile)
 			m.removeProjectile(id, "obstacle_hit", events)
+			continue
+		}
+		if projectile.TargetsPlayers {
+			for _, playerID := range sortedPlayerIDs(m.Players) {
+				player := m.Players[playerID]
+				if !player.Alive || !overlaps(projectile.X, projectile.Y, projectile.Radius, player.X, player.Y, PlayerRadius) {
+					continue
+				}
+				damage := max(1, int(math.Round(float64(projectile.Damage)*(1-player.ArmorPercent))))
+				player.HP = max(0, player.HP-damage)
+				if player.HP == 0 {
+					player.Alive = false
+					player.MoveX, player.MoveY = 0, 0
+				}
+				metrics.ConfirmedHits++
+				m.removeProjectile(id, "player_hit", events)
+				break
+			}
 			continue
 		}
 		for monsterID, monster := range m.Monsters {
@@ -499,16 +604,54 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 			if !overlaps(projectile.X, projectile.Y, projectile.Radius, monster.X, monster.Y, monster.Radius) {
 				continue
 			}
-			monster.HP -= projectile.Damage
+			if projectile.ExplosionRadius > 0 {
+				monster.HP -= enemyDamageAfterArmor(monster, projectile.ImpactDamage)
+				m.createExplosion(projectile)
+			} else {
+				monster.HP -= enemyDamageAfterArmor(monster, projectile.Damage)
+			}
 			metrics.ConfirmedHits++
 			m.removeProjectile(id, "enemy_hit", events)
 			if monster.HP <= 0 {
-				m.killMonster(monsterID, projectile.OwnerID)
+				m.killMonster(monsterID, projectile.OwnerID, events)
 			}
 			break
 		}
 	}
 	metrics.NarrowPhase = time.Since(narrowStarted)
+}
+
+func (m *Match) createExplosion(projectile *Projectile) {
+	if projectile.ExplosionRadius <= 0 {
+		return
+	}
+	m.nextExplosionID++
+	m.Explosions[m.nextExplosionID] = &Explosion{ID: m.nextExplosionID, OwnerID: projectile.OwnerID, SpellID: projectile.SpellID, X: projectile.X, Y: projectile.Y, Radius: projectile.ExplosionRadius, Damage: projectile.Damage, DamageInterval: projectile.DamageInterval, ExpiresAt: m.Elapsed + projectile.ExplosionDuration, LastDamage: make(map[uint64]time.Duration)}
+}
+
+func (m *Match) updateExplosions(events *Events, metrics *TickMetrics) {
+	for id, explosion := range m.Explosions {
+		for monsterID, monster := range m.Monsters {
+			metrics.CandidatePairs++
+			metrics.NarrowChecks++
+			if !overlaps(explosion.X, explosion.Y, explosion.Radius, monster.X, monster.Y, monster.Radius) {
+				continue
+			}
+			last, hitBefore := explosion.LastDamage[monsterID]
+			if hitBefore && m.Elapsed-last < explosion.DamageInterval {
+				continue
+			}
+			explosion.LastDamage[monsterID] = m.Elapsed
+			monster.HP -= enemyDamageAfterArmor(monster, explosion.Damage)
+			metrics.ConfirmedHits++
+			if monster.HP <= 0 {
+				m.killMonster(monsterID, explosion.OwnerID, events)
+			}
+		}
+		if m.Elapsed >= explosion.ExpiresAt {
+			delete(m.Explosions, id)
+		}
+	}
 }
 
 func (m *Match) updateBeams(events *Events, metrics *TickMetrics) {
@@ -526,10 +669,10 @@ func (m *Match) updateBeams(events *Events, metrics *TickMetrics) {
 				continue
 			}
 			beam.LastDamage[monsterID] = m.Elapsed
-			monster.HP -= beam.Damage
+			monster.HP -= enemyDamageAfterArmor(monster, beam.Damage)
 			metrics.ConfirmedHits++
 			if monster.HP <= 0 {
-				m.killMonster(monsterID, beam.OwnerID)
+				m.killMonster(monsterID, beam.OwnerID, events)
 			}
 		}
 		if m.Elapsed >= beam.ExpiresAt {
@@ -538,7 +681,7 @@ func (m *Match) updateBeams(events *Events, metrics *TickMetrics) {
 	}
 }
 
-func (m *Match) updateMonsters() {
+func (m *Match) updateMonsters(events *Events) {
 	for _, monster := range m.Monsters {
 		target := m.nearestLivingPlayer(monster.X, monster.Y)
 		if target == nil {
@@ -559,6 +702,7 @@ func (m *Match) updateMonsters() {
 			monster.X = resolvedX
 			monster.Y = resolvedY
 		}
+		m.castMonsterSpell(monster, target, events)
 
 		for _, player := range m.Players {
 			if !player.Alive || !overlaps(monster.X, monster.Y, monster.Radius, player.X, player.Y, PlayerRadius) {
@@ -577,6 +721,89 @@ func (m *Match) updateMonsters() {
 				player.MoveY = 0
 			}
 		}
+	}
+	m.separateMonsters()
+}
+
+func (m *Match) castMonsterSpell(monster *Monster, target *Player, events *Events) {
+	if len(monster.SpellIDs) == 0 {
+		return
+	}
+	spell, ok := SpellByID(monster.SpellIDs[0])
+	if !ok || spell.Kind != "projectile" || m.Elapsed-monster.LastSpellAt < spell.Cooldown {
+		return
+	}
+	dx, dy := target.X-monster.X, target.Y-monster.Y
+	distance := math.Hypot(dx, dy)
+	if distance <= 0 || distance > spell.Range {
+		return
+	}
+	monster.LastSpellAt = m.Elapsed
+	baseAngle := math.Atan2(dy, dx)
+	spread := ProjectileSpread * math.Pi / 180
+	for direction := range spell.Directions {
+		angle := baseAngle + (float64(direction)-float64(spell.Directions-1)/2)*spread
+		m.nextProjectileID++
+		projectile := &Projectile{ID: m.nextProjectileID, OwnerID: "enemy:" + strconv.FormatUint(monster.ID, 10), X: monster.X, Y: monster.Y, VelocityX: math.Cos(angle) * spell.ProjectileSpeed, VelocityY: math.Sin(angle) * spell.ProjectileSpeed, Damage: max(1, int(math.Round(float64(spell.Damage)*monster.AttackDamageMultiplier))), Range: spell.Range, Radius: spell.Radius, SpellID: spell.ID, TargetsPlayers: true}
+		m.Projectiles[projectile.ID] = projectile
+		events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{ProjectileID: projectile.ID, OwnerID: projectile.OwnerID, WeaponID: spell.ID, X: projectile.X, Y: projectile.Y, VelocityX: projectile.VelocityX, VelocityY: projectile.VelocityY, SpawnTick: m.Tick})
+	}
+}
+
+type monsterGridCell struct{ X, Y int }
+
+func (m *Match) separateMonsters() {
+	if len(m.Monsters) < 2 {
+		return
+	}
+	ids := sortedUint64Keys(m.Monsters)
+	grid := make(map[monsterGridCell][]uint64, len(ids))
+	for _, id := range ids {
+		monster := m.Monsters[id]
+		cell := monsterGridCell{X: int(math.Floor(monster.X / MonsterSeparationCellSize)), Y: int(math.Floor(monster.Y / MonsterSeparationCellSize))}
+		grid[cell] = append(grid[cell], id)
+	}
+	deltaX := make(map[uint64]float64, len(ids))
+	deltaY := make(map[uint64]float64, len(ids))
+	for _, id := range ids {
+		monster := m.Monsters[id]
+		cell := monsterGridCell{X: int(math.Floor(monster.X / MonsterSeparationCellSize)), Y: int(math.Floor(monster.Y / MonsterSeparationCellSize))}
+		for offsetY := -1; offsetY <= 1; offsetY++ {
+			for offsetX := -1; offsetX <= 1; offsetX++ {
+				for _, otherID := range grid[monsterGridCell{X: cell.X + offsetX, Y: cell.Y + offsetY}] {
+					if otherID <= id {
+						continue
+					}
+					other := m.Monsters[otherID]
+					dx, dy := other.X-monster.X, other.Y-monster.Y
+					distance := math.Hypot(dx, dy)
+					desired := (monster.Radius + other.Radius) * MonsterSeparationRadiusFactor
+					if distance >= desired {
+						continue
+					}
+					if distance < 0.001 {
+						angle := float64((id*31+otherID*17)%360) * math.Pi / 180
+						dx, dy, distance = math.Cos(angle), math.Sin(angle), 1
+					}
+					push := min(MonsterSeparationMaxStep, (desired-distance)*MonsterSeparationStrength*0.5)
+					normalX, normalY := dx/distance, dy/distance
+					deltaX[id] -= normalX * push
+					deltaY[id] -= normalY * push
+					deltaX[otherID] += normalX * push
+					deltaY[otherID] += normalY * push
+				}
+			}
+		}
+	}
+	for _, id := range ids {
+		monster := m.Monsters[id]
+		dx, dy := deltaX[id], deltaY[id]
+		length := math.Hypot(dx, dy)
+		if length > MonsterSeparationMaxStep {
+			dx *= MonsterSeparationMaxStep / length
+			dy *= MonsterSeparationMaxStep / length
+		}
+		monster.X, monster.Y = resolveWorldAndObstacles(monster.X+dx, monster.Y+dy, monster.Radius, m.Level.Obstacles)
 	}
 }
 
@@ -659,22 +886,34 @@ func (m *Match) selectSpawnEnemy() string {
 	return ""
 }
 
-func (m *Match) spawnMonsterOf(enemyID string) {
+func (m *Match) spawnMonsterOf(enemyID string, requestedMultipliers ...*EnemyStatMultipliers) uint64 {
 	definition, ok := EnemyByID(enemyID)
 	if !ok {
-		return
+		return 0
 	}
 	living := m.livingPlayers()
 	if len(living) == 0 {
-		return
+		return 0
 	}
+	multipliers := &EnemyStatMultipliers{}
+	if len(requestedMultipliers) > 0 && requestedMultipliers[0] != nil {
+		multipliers = requestedMultipliers[0]
+	}
+	healthMultiplier := positiveMultiplier(multipliers.Health)
+	speedMultiplier := positiveMultiplier(multipliers.MovementSpeed)
+	damageMultiplier := positiveMultiplier(multipliers.AttackDamage)
+	radiusMultiplier := positiveMultiplier(multipliers.CollisionRadius)
+	cooldownMultiplier := positiveMultiplier(multipliers.ContactCooldown)
+	experienceMultiplier := positiveMultiplier(multipliers.ExperienceDrop)
+	scoreMultiplier := positiveMultiplier(multipliers.Score)
+	radius := definition.Radius * radiusMultiplier
 	target := living[m.rng.Intn(len(living))]
 	for range 10 {
 		angle := m.rng.Float64() * 2 * math.Pi
 		distance := 700 + m.rng.Float64()*200
-		x := clamp(target.X+math.Cos(angle)*distance, definition.Radius, WorldWidth-definition.Radius)
-		y := clamp(target.Y+math.Sin(angle)*distance, definition.Radius, WorldHeight-definition.Radius)
-		if collidesObstacle(x, y, definition.Radius, m.Level.Obstacles) {
+		x := clamp(target.X+math.Cos(angle)*distance, radius, WorldWidth-radius)
+		y := clamp(target.Y+math.Sin(angle)*distance, radius, WorldHeight-radius)
+		if collidesObstacle(x, y, radius, m.Level.Obstacles) {
 			continue
 		}
 		valid := true
@@ -688,10 +927,22 @@ func (m *Match) spawnMonsterOf(enemyID string) {
 			continue
 		}
 		m.nextMonsterID++
-		maxHP := max(1, int(math.Round(float64(definition.MaxHP)*m.monsterHealthMultiplier)))
-		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier, Radius: definition.Radius, ContactDamage: definition.ContactDamage, ContactDelay: definition.ContactDelay, Experience: definition.Experience, Score: definition.Score, LastContact: make(map[string]time.Duration)}
-		return
+		maxHP := max(1, int(math.Round(float64(definition.MaxHP)*m.monsterHealthMultiplier*healthMultiplier)))
+		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier * speedMultiplier, Radius: radius, ContactDamage: max(1, int(math.Round(float64(definition.ContactDamage)*damageMultiplier))), Armor: definition.Armor, SpellIDs: append([]string(nil), definition.SpellIDs...), LastSpellAt: m.Elapsed, AttackDamageMultiplier: damageMultiplier, ContactDelay: time.Duration(float64(definition.ContactDelay) * cooldownMultiplier), Experience: max(1, int(math.Round(float64(definition.Experience)*experienceMultiplier))), Score: max(1, int(math.Round(float64(definition.Score)*scoreMultiplier))), LastContact: make(map[string]time.Duration)}
+		return m.nextMonsterID
 	}
+	return 0
+}
+
+func positiveMultiplier(value float64) float64 {
+	if value > 0 {
+		return value
+	}
+	return 1
+}
+
+func enemyDamageAfterArmor(monster *Monster, damage int) int {
+	return max(1, damage-monster.Armor)
 }
 
 func (m *Match) removeProjectile(id uint64, reason string, events *Events) {
@@ -699,14 +950,17 @@ func (m *Match) removeProjectile(id uint64, reason string, events *Events) {
 	events.RemovedProjectiles = append(events.RemovedProjectiles, ProjectileRemoval{ID: id, Reason: reason})
 }
 
-func (m *Match) killMonster(monsterID uint64, ownerID string) {
+func (m *Match) killMonster(monsterID uint64, ownerID string, events *Events) {
 	monster := m.Monsters[monsterID]
+	_, wasBoss := m.bossMonsterIDs[monsterID]
+	_, endsMatch := m.endingBossIDs[monsterID]
 	delete(m.Monsters, monsterID)
+	delete(m.bossMonsterIDs, monsterID)
 	m.nextPickupID++
 	m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, Kind: "experience", X: monster.X, Y: monster.Y, Value: monster.Experience}
 	m.TotalKills++
 	m.EnemyScore += monster.Score
-	if m.TotalKills%PowerCrateEveryKills == 0 {
+	if (wasBoss && !endsMatch) || m.TotalKills%PowerCrateEveryKills == 0 {
 		m.nextPickupID++
 		x, y := resolveWorldAndObstacles(monster.X+44, monster.Y, 18, m.Level.Obstacles)
 		m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, Kind: "power_crate", X: x, Y: y}
@@ -714,11 +968,15 @@ func (m *Match) killMonster(monsterID uint64, ownerID string) {
 	if owner, ok := m.Players[ownerID]; ok {
 		owner.Kills++
 	}
+	if endsMatch {
+		delete(m.endingBossIDs, monsterID)
+		m.finish("won", events)
+	}
 }
 
 func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.UpgradeAppliedPayload {
 	available := []string{"max_health", "health_regeneration", "attack_buff", "spell_damage"}
-	if player.SpellKind == "projectile" {
+	if player.SpellKind == "projectile" || player.SpellKind == "explosive_projectile" {
 		available = append(available, "projectile_speed")
 		if player.SpellBurst < 2 {
 			available = append(available, "spell_burst")
@@ -726,6 +984,9 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 	}
 	if player.SpellKind == "beam" {
 		available = append(available, "beam_length", "beam_width", "spell_duration")
+	}
+	if player.SpellKind == "explosive_projectile" {
+		available = append(available, "explosion_radius", "explosion_duration")
 	}
 	if player.ArmorPercent < MaximumArmorPercent {
 		available = append(available, "armor")
@@ -771,6 +1032,8 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		increment := 4
 		if player.SpellKind == "beam" {
 			increment = 6
+		} else if player.SpellKind == "explosive_projectile" {
+			increment = 8
 		}
 		baseValue, addedValue = float64(player.BaseSpellDamage), float64(increment)
 		player.SpellDamage += increment
@@ -803,6 +1066,16 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		baseValue, addedValue = float64(spell.Duration.Milliseconds()), 250
 		player.SpellDuration += 250 * time.Millisecond
 		finalValue = float64(player.SpellDuration.Milliseconds())
+	case "explosion_radius":
+		spell, _ := SpellByID(player.SpellID)
+		baseValue, addedValue = spell.ExplosionRadius, 20
+		player.ExplosionRadius += 20
+		finalValue = player.ExplosionRadius
+	case "explosion_duration":
+		spell, _ := SpellByID(player.SpellID)
+		baseValue, addedValue = float64(spell.ExplosionDuration.Milliseconds()), 250
+		player.ExplosionDuration += 250 * time.Millisecond
+		finalValue = float64(player.ExplosionDuration.Milliseconds())
 	}
 	return protocol.UpgradeAppliedPayload{PlayerID: player.ID, Source: source, Attribute: attribute, BaseValue: baseValue, AddedValue: addedValue, FinalValue: finalValue}
 }
@@ -851,8 +1124,20 @@ func (m *Match) processLevelEvents(events *Events) {
 					monster.Speed *= event.MonsterBuff.SpeedMultiplier
 				}
 			}
+		case "meteor_shower":
+			if event.MeteorShower != nil {
+				m.meteorShowers = append(m.meteorShowers, activeMeteorShower{Definition: *event.MeteorShower, EndsAt: m.Elapsed + event.MeteorShower.Duration})
+			}
 		case "boss":
-			m.spawnMonsterOf(event.EnemyID)
+			for range max(1, event.BossCount) {
+				monsterID := m.spawnMonsterOf(event.EnemyID, event.BossMultipliers)
+				if monsterID != 0 {
+					m.bossMonsterIDs[monsterID] = struct{}{}
+				}
+				if monsterID != 0 && event.EndMatchOnDeath {
+					m.endingBossIDs[monsterID] = struct{}{}
+				}
+			}
 		case "end":
 			m.finish("won", events)
 		}
@@ -860,11 +1145,19 @@ func (m *Match) processLevelEvents(events *Events) {
 }
 
 func (m *Match) finish(outcome string, events *Events) {
+	if m.Finished {
+		return
+	}
 	m.Finished = true
 	for id := range m.Projectiles {
 		m.removeProjectile(id, "match_ended", events)
 	}
 	clear(m.Beams)
+	clear(m.Explosions)
+	clear(m.Meteors)
+	m.meteorShowers = nil
+	clear(m.endingBossIDs)
+	clear(m.bossMonsterIDs)
 	events.MatchEnded = &protocol.MatchEndedPayload{
 		Outcome:    outcome,
 		SurvivalMs: m.Elapsed.Milliseconds(),
@@ -872,6 +1165,71 @@ func (m *Match) finish(outcome string, events *Events) {
 		TotalKills: m.TotalKills,
 		Score:      m.EnemyScore + m.TeamLevel*250 + int(m.Elapsed/time.Second),
 	}
+}
+
+func (m *Match) updateMeteors() {
+	activeShowers := m.meteorShowers[:0]
+	for _, shower := range m.meteorShowers {
+		if m.Elapsed >= shower.EndsAt {
+			continue
+		}
+		shower.Budget += shower.Definition.RatePerSecond * TickDuration.Seconds()
+		for shower.Budget >= 1 && len(m.Meteors) < 256 {
+			shower.Budget--
+			m.spawnMeteor(shower.Definition)
+		}
+		activeShowers = append(activeShowers, shower)
+	}
+	m.meteorShowers = activeShowers
+
+	for id, meteor := range m.Meteors {
+		if m.Elapsed >= meteor.ExpiresAt {
+			delete(m.Meteors, id)
+			continue
+		}
+		if m.Elapsed < meteor.ImpactAt {
+			continue
+		}
+		for _, playerID := range sortedPlayerIDs(m.Players) {
+			player := m.Players[playerID]
+			if !player.Alive || math.Hypot(player.X-meteor.X, player.Y-meteor.Y) > meteor.Radius+PlayerRadius {
+				continue
+			}
+			if last, hit := meteor.LastDamage[playerID]; hit && m.Elapsed-last < meteor.DamageInterval {
+				continue
+			}
+			meteor.LastDamage[playerID] = m.Elapsed
+			damage := max(1, int(math.Round(float64(meteor.Damage)*(1-player.ArmorPercent))))
+			player.HP = max(0, player.HP-damage)
+			if player.HP == 0 {
+				player.Alive = false
+				player.VelocityX, player.VelocityY = 0, 0
+			}
+		}
+	}
+}
+
+func (m *Match) spawnMeteor(definition MeteorShowerDefinition) {
+	living := make([]*Player, 0, len(m.Players))
+	for _, id := range sortedPlayerIDs(m.Players) {
+		if m.Players[id].Alive {
+			living = append(living, m.Players[id])
+		}
+	}
+	if len(living) == 0 {
+		return
+	}
+	target := living[m.rng.Intn(len(living))]
+	angle, distance := m.rng.Float64()*2*math.Pi, m.rng.Float64()*420
+	x := clamp(target.X+math.Cos(angle)*distance, definition.Radius, WorldWidth-definition.Radius)
+	y := clamp(target.Y+math.Sin(angle)*distance, definition.Radius, WorldHeight-definition.Radius)
+	linger := definition.LingerMin
+	if spread := definition.LingerMax - definition.LingerMin; spread > 0 {
+		linger += time.Duration(m.rng.Int63n(int64(spread) + 1))
+	}
+	m.nextMeteorID++
+	impactAt := m.Elapsed + definition.Warning
+	m.Meteors[m.nextMeteorID] = &Meteor{ID: m.nextMeteorID, X: x, Y: y, Radius: definition.Radius, Damage: definition.Damage, ImpactAt: impactAt, ExpiresAt: impactAt + linger, DamageInterval: definition.DamageInterval, LastDamage: make(map[string]time.Duration)}
 }
 
 func distanceToSegment(px, py, ax, ay, bx, by float64) float64 {

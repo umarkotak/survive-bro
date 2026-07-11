@@ -1,16 +1,16 @@
 # Game Content System
 
-This is the central extension model for gameplay content. The global glossary and target content shape live in `game-data/game.json`; inventory and modifier semantics live in `inventory-and-modifiers.md`. The JSON is currently a design contract while implemented runtime definitions remain in `apps/backend/internal/simulation/level.go`. The migration checkpoint must remove those Go literals before the JSON is declared runtime-authoritative.
+This is the central extension model for gameplay content. `game-data/game.json` is the single editable source. Sections listed in `runtimeSections` are read directly, decoded with Sonic, validated, and loaded at backend startup. Other sections remain a design contract until their gameplay systems are implemented.
 
 ## Stable content boundaries
 
 ### Character
 
-A character owns a stable ID, display name, sprite-set ID, starting max health, armor, movement speed, regeneration, attack buff, cooldown reduction, pickup radius, and base spell ID. `GET /api/v1/characters` drives selection. `join_room.characterId` selects the server definition. Snapshots repeat `characterId` so every client chooses the correct sprite set.
+A character owns a stable ID, display name, sprite-set ID, player attributes, starting spell IDs, and one required default spell ID. `GET /api/v1/characters` drives selection. `join_room.characterId` selects the server definition. Snapshots repeat `characterId` so every client chooses the correct sprite set.
 
 ### Spell
 
-A spell owns an attack type plus its relevant attributes. `projectile` spells use speed/range/radius; `beam` spells use length/width/linger/damage interval. Both may use damage, cooldown, and directions. A character references one base spell. Personal upgrades modify the player-owned resolved copy, never the shared definition.
+A spell is reusable and independent from characters. `projectile` spells use speed/range/radius; `beam` spells use length/width/linger/damage interval; `explosive_projectile` spells add direct impact damage, blast radius, and explosion linger. Characters reference starting spells and a default active spell. The player model stores multiple owned spell IDs, while acquisition and active-spell switching remain a later inventory milestone.
 
 ### Buff
 
@@ -22,7 +22,7 @@ A modifier targets one glossary attribute through a stable operation. The same e
 
 ### Enemy
 
-An enemy owns a stable ID, name, sprite ID, score, XP drop, health, speed, collision radius, contact damage, and contact cooldown. Snapshots carry `typeId`; clients use that ID only for visuals.
+An enemy owns a stable ID, name, sprite ID, score, XP drop, health, flat armor, speed, collision radius, contact damage/cooldown, and optional reusable spell IDs. Enemy armor subtracts from every authoritative incoming hit with minimum damage `1`. Enemy spells use the same definitions as player spells while targeting and damage remain server-owned. Snapshots carry `typeId`; clients use that ID only for visuals.
 
 ### Level
 
@@ -34,7 +34,9 @@ Every event has a stable ID, timestamp, type, title, and player-facing descripti
 
 - `spawn_rate`: replaces the active normal-spawn configuration. It independently controls rate per second, maximum living enemies, and weighted enemy composition.
 - `monster_buff`: multiplies health and movement speed for existing enemies and all enemies spawned afterward.
-- `boss`: spawns one enemy type without changing the normal spawn configuration.
+- `meteor_shower`: spawns bounded, server-authoritative area hazards near living players. Its content config owns duration, spawn rate, warning, radius, damage interval, and a validated 3–4 second linger range; snapshots expose only rendering state.
+- `boss`: spawns one enemy type without changing normal spawns. Optional `endMatchOnDeath` binds victory to that exact spawned boss instance. Optional positive `statMultipliers` independently scale health, movement speed, attack damage, collision radius, contact cooldown, XP drop, and score. Omitted multipliers equal `1`; boss multipliers compose with earlier global monster buffs.
+- Non-ending boss-event enemies guarantee one power crate when defeated; ordinary enemies retain the global kill-cadence crate reward. An ending boss resolves results immediately instead of dropping an unusable post-match crate.
 - `end`: resolves the match and score.
 
 Events must be ordered and deterministic. Adding an event type requires validation, simulation handling, timeline presentation, protocol documentation, and a manual acceptance case. `match_started` sends the public event timeline once; snapshots only advance remaining time.

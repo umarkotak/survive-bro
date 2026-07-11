@@ -17,6 +17,11 @@ export class BootScene extends Phaser.Scene {
       'character-frieren-walk-1',
       'character-frieren-walk-2',
       'character-frieren-walk-3',
+      'character-catapult-attack-1',
+      'character-catapult-idle',
+      'character-catapult-walk-1',
+      'character-catapult-walk-2',
+      'character-catapult-walk-3',
       'obstacle-large-rock-1',
       'obstacle-large-rock-2',
       'obstacle-large-rock-3',
@@ -34,6 +39,7 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     this.createShadowTexture()
     this.createBoltTexture()
+    this.createRocketTextures()
     this.createExperienceTexture()
     this.createPowerCrateTexture()
     this.scene.start('GameScene')
@@ -58,6 +64,15 @@ export class BootScene extends Phaser.Scene {
     graphics.fillEllipse(27, 12, 21, 7)
     graphics.generateTexture('arc-bolt', 48, 24)
     graphics.destroy()
+  }
+
+  private createRocketTextures(): void {
+    const rocket = this.make.graphics({ x: 0, y: 0 })
+    rocket.fillStyle(0xffd36a, 1).fillRoundedRect(8, 5, 30, 12, 3)
+    rocket.fillStyle(0xff6b3d, 1).fillTriangle(8, 5, 0, 11, 8, 17)
+    rocket.fillStyle(0xf7f2da, 1).fillTriangle(38, 5, 46, 11, 38, 17)
+    rocket.generateTexture('rocket', 46, 22)
+    rocket.destroy()
   }
 
   private createExperienceTexture(): void {

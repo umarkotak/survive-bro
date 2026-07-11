@@ -11,6 +11,7 @@ import type { SystemEventPayload } from './network/protocol'
 
 const displayNameKey = 'survive-bro-display-name'
 const roomAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+const roomPollIntervalMs = 2000
 
 interface RoomSummary {
   roomName: string
@@ -21,7 +22,7 @@ interface RoomSummary {
   levelId: string
 }
 interface LevelSummary { id: string; name: string; durationSeconds: number }
-interface CharacterSummary { id: string; name: string; spriteId: string; maxHp: number; armorPercent: number; movementSpeed: number; healthRegeneration: number; attackBuffPercent: number; cooldownPercent: number; baseSpell: { id: string; kind: string; damage: number; cooldownMs: number; projectileSpeed: number; burst: number; directions: number; beamLength: number; beamWidth: number; durationMs: number; damageIntervalMs: number } }
+interface CharacterSummary { id: string; name: string; spriteId: string; maxHp: number; armorPercent: number; movementSpeed: number; healthRegeneration: number; attackBuffPercent: number; cooldownPercent: number; defaultSpellId: string; startingSpellIds: string[]; baseSpell: { id: string; kind: string; damage: number; impactDamage: number; cooldownMs: number; projectileSpeed: number; burst: number; directions: number; beamLength: number; beamWidth: number; durationMs: number; damageIntervalMs: number; explosionRadius: number; explosionDurationMs: number } }
 
 interface UpgradeHistoryEntry extends UpgradeAppliedPayload { id: number; occurredAt: Date }
 
@@ -46,35 +47,68 @@ export function App() {
   const [upgradeToast, setUpgradeToast] = useState<UpgradeHistoryEntry | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<SystemEventPayload | null>(null)
 
-  const loadRooms = useCallback(async () => {
+  const loadRooms = useCallback(async (signal?: AbortSignal) => {
     if (!displayName) return
-    setLoadingRooms(true)
-    setError('')
     try {
       const roomsUrl = joinNetworkUrl(networkConfig.apiBaseUrl, '/api/v1/rooms')
-      const levelsUrl = joinNetworkUrl(networkConfig.apiBaseUrl, '/api/v1/levels')
-      const charactersUrl = joinNetworkUrl(networkConfig.apiBaseUrl, '/api/v1/characters')
-      const [response, levelResponse, characterResponse] = await Promise.all([fetch(roomsUrl), fetch(levelsUrl), fetch(charactersUrl)])
+      const response = await fetch(roomsUrl, { signal })
       if (!response.ok) throw new Error(`Room list returned HTTP ${response.status} ${response.statusText}`)
-      if (!levelResponse.ok) throw new Error(`Level list returned HTTP ${levelResponse.status} ${levelResponse.statusText}`)
-      if (!characterResponse.ok) throw new Error(`Character list returned HTTP ${characterResponse.status} ${characterResponse.statusText}`)
       const data = await response.json() as { rooms?: RoomSummary[] }
-      const levelData = await levelResponse.json() as { levels?: LevelSummary[] }
-      const characterData = await characterResponse.json() as { characters?: CharacterSummary[] }
       if (!Array.isArray(data.rooms)) throw new Error('Room list returned an invalid response')
-      if (!Array.isArray(levelData.levels)) throw new Error('Level list returned an invalid response')
-      if (!Array.isArray(characterData.characters)) throw new Error('Character list returned an invalid response')
       setRooms(data.rooms)
-      setLevels(levelData.levels)
-      setCharacters(characterData.characters)
+      setError('')
     } catch (loadError) {
+      if (signal?.aborted) return
       setError(loadError instanceof Error ? loadError.message : 'Could not load rooms.')
-    } finally {
-      setLoadingRooms(false)
     }
   }, [displayName])
 
-  useEffect(() => { void loadRooms() }, [loadRooms])
+  useEffect(() => {
+    if (!displayName) return
+    let cancelled = false
+    async function loadSelectionData() {
+      try {
+        const levelsUrl = joinNetworkUrl(networkConfig.apiBaseUrl, '/api/v1/levels')
+        const charactersUrl = joinNetworkUrl(networkConfig.apiBaseUrl, '/api/v1/characters')
+        const levelResponse = await fetch(levelsUrl)
+        if (!levelResponse.ok) throw new Error(`Level list returned HTTP ${levelResponse.status} ${levelResponse.statusText}`)
+        const levelData = await levelResponse.json() as { levels?: LevelSummary[] }
+        if (!Array.isArray(levelData.levels)) throw new Error('Level list returned an invalid response')
+        if (!cancelled) setLevels(levelData.levels)
+
+        const characterResponse = await fetch(charactersUrl)
+        if (!characterResponse.ok) throw new Error(`Character list returned HTTP ${characterResponse.status} ${characterResponse.statusText}`)
+        const characterData = await characterResponse.json() as { characters?: CharacterSummary[] }
+        if (!Array.isArray(characterData.characters)) throw new Error('Character list returned an invalid response')
+        if (!cancelled) setCharacters(characterData.characters)
+      } catch (loadError) {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Could not load game data.')
+      }
+    }
+    void loadSelectionData()
+    return () => { cancelled = true }
+  }, [displayName])
+
+  useEffect(() => {
+    if (!displayName || session) return
+    let cancelled = false
+    let timeout: number | undefined
+    let controller: AbortController | undefined
+    async function pollRooms() {
+      controller = new AbortController()
+      setLoadingRooms(true)
+      await loadRooms(controller.signal)
+      if (cancelled) return
+      setLoadingRooms(false)
+      timeout = window.setTimeout(() => void pollRooms(), roomPollIntervalMs)
+    }
+    void pollRooms()
+    return () => {
+      cancelled = true
+      controller?.abort()
+      if (timeout !== undefined) window.clearTimeout(timeout)
+    }
+  }, [displayName, loadRooms, session])
   useEffect(() => {
     if (!session) return
     setHud(session.bridge.getSnapshot())
@@ -91,6 +125,8 @@ export function App() {
       if (upgrade.attribute === 'beam_length') bridgePatch.beamLength = upgrade.finalValue
       if (upgrade.attribute === 'beam_width') bridgePatch.beamWidth = upgrade.finalValue
       if (upgrade.attribute === 'spell_duration') bridgePatch.spellDurationMs = upgrade.finalValue
+      if (upgrade.attribute === 'explosion_radius') bridgePatch.explosionRadius = upgrade.finalValue
+      if (upgrade.attribute === 'explosion_duration') bridgePatch.explosionDurationMs = upgrade.finalValue
       session.bridge.patch(bridgePatch)
       if (upgrade.source === 'level_up') gameAudio.levelUp()
       else gameAudio.treasure()
@@ -121,7 +157,7 @@ export function App() {
     try {
       await nextSession.connect(roomName, displayName, levelId, characterId)
       const character = characters.find((item) => item.id === characterId)
-      if (character) nextSession.bridge.patch({ characterId: character.id, characterName: character.name, spellId: character.baseSpell.id, baseMaxHp: character.maxHp, baseArmorPercent: character.armorPercent, baseMovementSpeed: character.movementSpeed, baseHealthRegeneration: character.healthRegeneration, baseAttackBuffPercent: character.attackBuffPercent, baseCooldownPercent: character.cooldownPercent, baseSpellDamage: character.baseSpell.damage, baseProjectileSpeed: character.baseSpell.projectileSpeed, baseSpellBurst: character.baseSpell.burst, baseSpellDirections: character.baseSpell.directions, baseSpellCooldownMs: character.baseSpell.cooldownMs, beamLength: character.baseSpell.beamLength, beamWidth: character.baseSpell.beamWidth, spellDurationMs: character.baseSpell.durationMs, damageIntervalMs: character.baseSpell.damageIntervalMs })
+      if (character) nextSession.bridge.patch({ characterId: character.id, characterName: character.name, spellId: character.defaultSpellId, baseMaxHp: character.maxHp, baseArmorPercent: character.armorPercent, baseMovementSpeed: character.movementSpeed, baseHealthRegeneration: character.healthRegeneration, baseAttackBuffPercent: character.attackBuffPercent, baseCooldownPercent: character.cooldownPercent, baseSpellDamage: character.baseSpell.damage, baseProjectileSpeed: character.baseSpell.projectileSpeed, baseSpellBurst: character.baseSpell.burst, baseSpellDirections: character.baseSpell.directions, baseSpellCooldownMs: character.baseSpell.cooldownMs, beamLength: character.baseSpell.beamLength, beamWidth: character.baseSpell.beamWidth, spellDurationMs: character.baseSpell.durationMs, damageIntervalMs: character.baseSpell.damageIntervalMs, explosionRadius: character.baseSpell.explosionRadius, explosionDurationMs: character.baseSpell.explosionDurationMs, impactDamage: character.baseSpell.impactDamage })
       setCreateCode('')
       setPendingJoin(null)
       setSession(nextSession)
@@ -143,7 +179,6 @@ export function App() {
     setSelectedEvent(null)
     setSession(null)
     setHud(null)
-    void loadRooms()
   }
 
   if (!displayName) {
@@ -167,7 +202,7 @@ export function App() {
       <div className="room-title"><div><span className="eyebrow">Live rooms</span><h1>Pick a meadow.</h1><p>Join any available squad or create a new five-letter room.</p></div><button className="create-room-button" type="button" onClick={() => setCreateCode(generateRoomCode())}>+ Create room</button></div>
       {error && <p className="room-error" role="alert">{error}</p>}
       <div className="room-list">
-        <div className="room-list-heading"><strong>Available rooms</strong><button type="button" onClick={() => void loadRooms()} disabled={loadingRooms}>{loadingRooms ? 'Refreshing…' : 'Refresh'}</button></div>
+        <div className="room-list-heading"><strong>Available rooms</strong><span>{loadingRooms ? 'Updating…' : 'Live'}</span></div>
         {rooms.length === 0 && !loadingRooms ? <div className="empty-rooms"><strong>No active rooms yet.</strong><span>Create one and invite your bros.</span></div> : rooms.map((room) => (
           <article className="room-row" key={room.roomName}>
             <div className="room-code"><span>{room.status} · {room.levelId === 'level-1' ? 'Slime Meadow' : room.levelId}</span><strong>{room.roomName}</strong></div>
@@ -188,7 +223,8 @@ export function App() {
   const elapsedMs = Math.max(0, hud.levelDurationMs - hud.remainingMs)
   return <main className="app-shell"><section className="game-frame">
     <GameCanvas session={session} />
-    <div className="game-hud"><div className="timeline-hud"><div className="timeline-arrow">▼</div><div className="timeline-track" style={{ backgroundPositionX: `${-(elapsedMs / 1000) * 12}px` }}>{hud.timelineEvents.map((event) => { const position = 50 + ((event.atMs - elapsedMs) / hud.levelDurationMs) * 100; return <button key={event.id} type="button" className={`timeline-event ${event.type}`} style={{ left: `${position}%` }} onClick={() => setSelectedEvent(event)}><i>{event.type === 'boss' ? '♛' : event.type === 'end' ? '■' : '◆'}</i><span>{formatTimelineTime(event.atMs)}</span></button> })}</div></div>
+    <div className={`game-hud${hud.bosses.length > 0 ? ' boss-active' : ''}`}><div className="timeline-hud"><div className="timeline-arrow">▼</div><div className="timeline-track" style={{ backgroundPositionX: `${-(elapsedMs / 1000) * 12}px` }}>{hud.timelineEvents.map((event) => { const position = 50 + ((event.atMs - elapsedMs) / hud.levelDurationMs) * 100; return <button key={event.id} type="button" className={`timeline-event ${event.type}`} style={{ left: `${position}%` }} onClick={() => setSelectedEvent(event)}><i>{event.type === 'boss' ? '♛' : event.type === 'meteor_shower' ? '☄' : event.type === 'end' ? '■' : '◆'}</i><span>{formatTimelineTime(event.atMs)}</span></button> })}</div></div>
+      {hud.bosses.length > 0 && <div className="boss-bars" style={{ gridTemplateColumns: `repeat(${hud.bosses.length}, minmax(0, 1fr))` }}>{hud.bosses.map((boss) => <section className="boss-health" key={boss.id}><img src={`/assets/${boss.spriteId}.png`} alt="" /><div className="boss-health-content"><div><strong>{boss.name}</strong><span>{boss.hp.toLocaleString()}/{boss.maxHp.toLocaleString()}</span></div><div className="boss-health-track"><i style={{ width: `${Math.max(0, Math.min(100, boss.hp / boss.maxHp * 100))}%` }} /></div></div></section>)}</div>}
       <div className="experience-strip"><i style={{ width: `${experiencePercent}%` }} /><span>LV {hud.level} · {hud.experience}/{hud.experienceRequired} XP</span></div>
       <aside className="health-panel">
         <button className="player-portrait-button" type="button" aria-label="Open your character and spell statistics" onClick={() => setStatsOpen(true)}><img src={`/assets/character-${hud.characterId}-idle.png`} alt="" /><span>YOU</span></button>
@@ -208,11 +244,12 @@ export function App() {
 
 function PlayerStatsModal({ hud, onClose, onHistory }: { hud: GameHudState; onClose: () => void; onHistory: () => void }) {
   const isBeam = hud.spellId === 'soul-track'
+  const isExplosive = hud.spellId === 'rocket'
   return <div className="menu-backdrop" onClick={onClose}><section className="stats-modal" role="dialog" aria-modal="true" aria-labelledby="stats-title" onClick={(event) => event.stopPropagation()}>
     <div className="modal-actions"><button type="button" className="history-button" onClick={onHistory}>History</button><button type="button" className="menu-close" aria-label="Close statistics" onClick={onClose}>×</button></div>
     <header className="stats-identity"><img src={`/assets/character-${hud.characterId}-idle.png`} alt={hud.characterName} /><div><span>YOUR CHARACTER</span><h2 id="stats-title">{hud.displayName}</h2><p>{hud.characterName} · Team level {hud.level}</p></div></header>
     <div className="stats-columns"><section><h3>Character stats</h3><dl className="attribute-list"><div><dt>Current health</dt><dd>{hud.hp}</dd></div><div><dt>Max health</dt><dd>{statLine(hud.baseMaxHp, hud.maxHp, integer)}</dd></div><div><dt>Armor</dt><dd>{statLine(hud.baseArmorPercent, hud.armorPercent, percent)}</dd></div><div><dt>Movement speed</dt><dd>{statLine(hud.baseMovementSpeed, hud.movementSpeed, integer)}</dd></div><div><dt>Regeneration</dt><dd>{statLine(hud.baseHealthRegeneration, hud.healthRegeneration, integer)}</dd></div><div><dt>Attack buff</dt><dd>{statLine(hud.baseAttackBuffPercent, hud.attackBuffPercent, percent)}</dd></div><div><dt>Cooldown reduction</dt><dd>{statLine(hud.baseCooldownPercent, hud.cooldownPercent, percent)}</dd></div></dl></section>
-      <section><h3>{spellName(hud.spellId)} stats</h3><dl className="attribute-list"><div><dt>Damage</dt><dd>{statLine(hud.baseSpellDamage, hud.spellDamage, integer)}</dd></div>{isBeam ? <><div><dt>Length</dt><dd>{integer(hud.beamLength)}</dd></div><div><dt>Width</dt><dd>{integer(hud.beamWidth)}</dd></div><div><dt>Lingering</dt><dd>{integer(hud.spellDurationMs)} ms</dd></div><div><dt>Damage interval</dt><dd>{integer(hud.damageIntervalMs)} ms</dd></div></> : <><div><dt>Projectile speed</dt><dd>{statLine(hud.baseProjectileSpeed, hud.projectileSpeed, integer)}</dd></div><div><dt>Burst</dt><dd>{statLine(hud.baseSpellBurst, hud.spellBurst, integer)}</dd></div></>}<div><dt>Directions</dt><dd>{statLine(hud.baseSpellDirections, hud.spellDirections, integer)}</dd></div><div><dt>Final damage</dt><dd>{Math.round(hud.spellDamage * (1 + hud.attackBuffPercent))}</dd></div><div><dt>Current cooldown</dt><dd>{Math.round(hud.baseSpellCooldownMs * (1 - hud.cooldownPercent))} ms</dd></div></dl></section>
+      <section><h3>{spellName(hud.spellId)} stats</h3><dl className="attribute-list"><div><dt>Damage</dt><dd>{statLine(hud.baseSpellDamage, hud.spellDamage, integer)}</dd></div>{isBeam ? <><div><dt>Length</dt><dd>{integer(hud.beamLength)}</dd></div><div><dt>Width</dt><dd>{integer(hud.beamWidth)}</dd></div><div><dt>Lingering</dt><dd>{integer(hud.spellDurationMs)} ms</dd></div><div><dt>Damage interval</dt><dd>{integer(hud.damageIntervalMs)} ms</dd></div></> : <><div><dt>Projectile speed</dt><dd>{statLine(hud.baseProjectileSpeed, hud.projectileSpeed, integer)}</dd></div>{isExplosive && <><div><dt>Impact damage</dt><dd>{hud.impactDamage}</dd></div><div><dt>Blast radius</dt><dd>{integer(hud.explosionRadius)}</dd></div><div><dt>Explosion linger</dt><dd>{integer(hud.explosionDurationMs)} ms</dd></div></>}<div><dt>Burst</dt><dd>{statLine(hud.baseSpellBurst, hud.spellBurst, integer)}</dd></div></>}<div><dt>Directions</dt><dd>{statLine(hud.baseSpellDirections, hud.spellDirections, integer)}</dd></div><div><dt>Final damage</dt><dd>{Math.round(hud.spellDamage * (1 + hud.attackBuffPercent))}</dd></div><div><dt>Current cooldown</dt><dd>{Math.round(hud.baseSpellCooldownMs * (1 - hud.cooldownPercent))} ms</dd></div></dl></section>
     </div>
   </section></div>
 }
@@ -222,7 +259,7 @@ function percent(value: number): string { return `${Math.round(value * 100)}%` }
 function integer(value: number): string { return Math.round(value).toString() }
 function statLine(base: number, final: number, formatter: (value: number) => string): string { return `${formatter(base)} (+${formatter(Math.max(0, final - base))}) ${formatter(final)}` }
 function upgradeLabel(attribute: UpgradeAttribute): string {
-  return ({ max_health: 'Max health', armor: 'Armor', movement_speed: 'Movement speed', health_regeneration: 'Health regeneration', attack_buff: 'Attack buff', cooldown: 'Cooldown reduction', spell_damage: 'Spell damage', projectile_speed: 'Projectile speed', spell_burst: 'Spell burst', spell_directions: 'Spell directions', beam_length: 'Beam length', beam_width: 'Beam width', spell_duration: 'Linger duration' })[attribute]
+  return ({ max_health: 'Max health', armor: 'Armor', movement_speed: 'Movement speed', health_regeneration: 'Health regeneration', attack_buff: 'Attack buff', cooldown: 'Cooldown reduction', spell_damage: 'Spell damage', projectile_speed: 'Projectile speed', spell_burst: 'Spell burst', spell_directions: 'Spell directions', beam_length: 'Beam length', beam_width: 'Beam width', spell_duration: 'Linger duration', explosion_radius: 'Blast radius', explosion_duration: 'Explosion linger' })[attribute]
 }
 function formatUpgradeValue(attribute: UpgradeAttribute, value: number): string {
   return attribute === 'armor' || attribute === 'attack_buff' || attribute === 'cooldown' ? percent(value) : integer(value)

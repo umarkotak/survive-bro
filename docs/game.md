@@ -6,7 +6,7 @@
 
 - React 19.2.7, TypeScript 7.0.2, Vite 8.1.4, and Phaser exactly `4.2.1`.
 - Node 24 declarations through `.node-version`, `.nvmrc`, and package engines.
-- Local-storage username setup followed by a live room browser, join actions, and a generated five-letter create-room modal.
+- Local-storage username setup followed by a live room browser, join actions, and a generated five-letter create-room modal. While the browser is visible, room-list HTTP polling waits for each response, then waits two seconds before starting the next request; room-list requests never overlap.
 - Data-driven character selection currently offers Ranger/Fireball and Frieren/Soul Track with separate sprite sets and starting stats.
 - One `MultiplayerSession`, WebSocket, and `GameCanvas` per gameplay entry with complete cleanup on leave.
 - Dependency-free binary WebSocket v2 codec using `ArrayBuffer` and `DataView`; realtime messages never pass through JSON.
@@ -26,7 +26,9 @@ The Go server owns movement, enemies, projectiles, damage, XP, and match outcome
 
 ## Development art
 
-`BootScene` loads the supplied production terrain variants, Ranger frames, rock variants, and all three Level 1 Slime stages from `public/assets`. It still generates temporary Fireball, pickup, crate, and shadow textures until those production files are supplied.
+`BootScene` loads the supplied production terrain, Ranger, Frieren, Catapult, rock, and Level 1 Slime assets from `public/assets`. It generates temporary Fireball, Rocket, explosion, pickup, crate, and shadow visuals until dedicated spell/effect assets are supplied.
+
+Boss-event instances are marked in binary snapshots. React renders compact avatar/HP cards below the menu in an equal-column row; Phaser continues to own their world sprites.
 
 The 256 x 256 Ranger sources render at 132 x 132 so their transparent-bound body aligns with the authoritative 30-unit player collision radius. The 256 x 256 rock sources render at 180 x 180 so their visible mass aligns with the authoritative 65-unit rock radius; gameplay hitboxes remain server-owned.
 

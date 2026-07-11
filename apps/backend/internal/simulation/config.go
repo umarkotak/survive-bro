@@ -3,37 +3,41 @@ package simulation
 import "time"
 
 const (
-	TickDuration         = 50 * time.Millisecond
-	SnapshotEveryTicks   = 2
-	MatchDuration        = 6 * time.Minute
-	InputStaleAfter      = 250 * time.Millisecond
-	WorldWidth           = 3200.0
-	WorldHeight          = 1800.0
-	PlayerSpawnX         = 1600.0
-	PlayerSpawnY         = 900.0
-	PlayerSpawnRadius    = 80.0
-	PlayerRadius         = 30.0
-	PlayerMaxHP          = 100
-	PlayerSpeed          = 220.0
-	PlayerPickupRadius   = 120.0
-	MaximumMovementBonus = 0.80
-	MaximumArmorPercent  = 0.60
-	WeaponDamage         = 20
-	WeaponCooldown       = 750 * time.Millisecond
-	ProjectileSpeed      = 700.0
-	ProjectileSpread     = 10.0
-	ProjectileRange      = 700.0
-	ProjectileRadius     = 10.0
-	PickupAttractSpeed   = 900.0
-	PickupCollectRadius  = 32.0
-	PowerCrateEveryKills = 12
-	PowerCrateRadius     = 70.0
-	MonsterMaxHP         = 40
-	MonsterSpeed         = 80.0
-	MonsterRadius        = 24.0
-	MonsterContactDamage = 10
-	MonsterContactDelay  = 800 * time.Millisecond
-	MonsterXP            = 1
+	TickDuration                  = 50 * time.Millisecond
+	SnapshotEveryTicks            = 2
+	MatchDuration                 = 6 * time.Minute
+	InputStaleAfter               = 250 * time.Millisecond
+	WorldWidth                    = 3200.0
+	WorldHeight                   = 1800.0
+	PlayerSpawnX                  = 1600.0
+	PlayerSpawnY                  = 900.0
+	PlayerSpawnRadius             = 80.0
+	PlayerRadius                  = 30.0
+	PlayerMaxHP                   = 100
+	PlayerSpeed                   = 220.0
+	PlayerPickupRadius            = 120.0
+	MaximumMovementBonus          = 0.80
+	MaximumArmorPercent           = 0.60
+	WeaponDamage                  = 20
+	WeaponCooldown                = 750 * time.Millisecond
+	ProjectileSpeed               = 700.0
+	ProjectileSpread              = 10.0
+	ProjectileRange               = 700.0
+	ProjectileRadius              = 10.0
+	PickupAttractSpeed            = 900.0
+	PickupCollectRadius           = 32.0
+	PowerCrateEveryKills          = 12
+	PowerCrateRadius              = 70.0
+	MonsterMaxHP                  = 40
+	MonsterSpeed                  = 80.0
+	MonsterRadius                 = 24.0
+	MonsterContactDamage          = 10
+	MonsterContactDelay           = 800 * time.Millisecond
+	MonsterXP                     = 1
+	MonsterSeparationCellSize     = 128.0
+	MonsterSeparationRadiusFactor = 0.72
+	MonsterSeparationStrength     = 0.22
+	MonsterSeparationMaxStep      = 5.0
 )
 
 type Obstacle struct {

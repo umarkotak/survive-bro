@@ -69,13 +69,14 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 
 - `joined`: `playerId string`, `reconnectToken string`, `roomName string`, `host u8`.
 - `room_state`: `status u8`, `hostPlayerId string`, `playerCount u8`, then players. Each player is `id string`, `displayName string`, `characterId string`, `flags u8` (`bit0 ready`, `bit1 connected`). Status enum: `0 lobby`, `1 running`, `2 finished`.
-- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`. Public event types are `spawn_rate`, `monster_buff`, `boss`, and `end`.
+- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`. Public event types are `spawn_rate`, `monster_buff`, `meteor_shower`, `boss`, and `end`.
 - `snapshot`: header/team fields and entity arrays described below.
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
-- `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`.
+- Enemy-owned projectiles use `ownerId = "enemy:<monsterId>"`; clients render them normally and do not decide their hits.
+- `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`, `4 player_hit`.
 - `match_ended`: `outcome u8` (`0 lost`, `1 won`), `survivalMs u32`, `teamLevel u16`, `totalKills u32`, `score u32`.
 - `pong`: empty.
-- `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs are `max_health`, `armor`, `movement_speed`, `health_regeneration`, `attack_buff`, `cooldown`, `spell_damage`, `projectile_speed`, `spell_burst`, or `spell_directions`.
+- `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs include player stats plus spell-specific projectile, beam, and explosion properties documented in `game-data/game.json`.
 - `error`: `code string`, `message string`.
 - `server_shutdown`: `reason string`.
 
@@ -97,7 +98,7 @@ playerCount u8
     attackBuffPercent f32
     cooldownPercent f32
     flags u8 (bit0 facing-left, bit1 alive)
-    hp u16, maxHp u16
+    hp u32, maxHp u32
     spellDamage u16
     projectileSpeed f32
     spellBurst u8
@@ -110,6 +111,7 @@ monsterCount u16
     x f32, y f32
     typeId string
     hp u16, maxHp u16
+    flags u8 (bit 0 boss-event instance)
 beamCount u16
   repeated beam:
     id u32
@@ -117,6 +119,18 @@ beamCount u16
     spellId string
     x f32, y f32, angle f32, length f32, width f32
     remainingMs u32
+explosionCount u16
+  repeated explosion:
+    id u32
+    ownerId string
+    spellId string
+    x f32, y f32, radius f32
+    remainingMs u32
+meteorCount u16
+  repeated meteor:
+    id u32
+    x f32, y f32, radius f32
+    impactInMs u32, remainingMs u32
 pickupCount u16
   repeated pickup:
     id u32
@@ -135,7 +149,7 @@ Static obstacles are sent once in `match_started`. Projectile positions are extr
 
 ## Quick-play lifecycle
 
-- The first joined player starts the selected level immediately. Level 1 ends at six minutes.
+- The first joined player starts the selected level immediately. Level 1 ends when its designated ending boss dies or at the six-minute fallback event.
 - Up to six players may join the named room while it is running.
 - Late joiners spawn around map centre according to current player order.
 - When the room becomes empty, its match resets and the empty-room expiry timer starts.

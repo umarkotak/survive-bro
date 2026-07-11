@@ -11,6 +11,7 @@ import (
 
 	"survive-bro/apps/backend/internal/app"
 	"survive-bro/apps/backend/internal/config"
+	"survive-bro/apps/backend/internal/simulation"
 )
 
 func main() {
@@ -25,6 +26,9 @@ func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+	if err := simulation.LoadRuntimeGameData(cfg.GameDataPath); err != nil {
+		return fmt.Errorf("load game data: %w", err)
 	}
 	application := app.New(cfg, logger)
 

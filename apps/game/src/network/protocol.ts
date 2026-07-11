@@ -81,7 +81,7 @@ export interface MatchStartedPayload {
   durationMs: number
   events: SystemEventPayload[]
 }
-export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'monster_buff' | 'boss' | 'end'; title: string; description: string; atMs: number }
+export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'monster_buff' | 'meteor_shower' | 'boss' | 'end'; title: string; description: string; atMs: number }
 
 export interface SnapshotPlayer {
   id: string
@@ -115,6 +115,7 @@ export interface SnapshotMonster {
   y: number
   hp: number
   maxHp: number
+  isBoss: boolean
 }
 
 export interface SnapshotPickup {
@@ -124,6 +125,8 @@ export interface SnapshotPickup {
   y: number
 }
 export interface SnapshotBeam { id: number; ownerId: string; spellId: string; x: number; y: number; angle: number; length: number; width: number; remainingMs: number }
+export interface SnapshotExplosion { id: number; ownerId: string; spellId: string; x: number; y: number; radius: number; remainingMs: number }
+export interface SnapshotMeteor { id: number; x: number; y: number; radius: number; impactInMs: number; remainingMs: number }
 
 export interface SnapshotPayload {
   tick: number
@@ -131,6 +134,8 @@ export interface SnapshotPayload {
   players: SnapshotPlayer[]
   monsters: SnapshotMonster[]
   beams: SnapshotBeam[]
+  explosions: SnapshotExplosion[]
+  meteors: SnapshotMeteor[]
   pickups: SnapshotPickup[]
   team: {
     level: number
@@ -154,7 +159,7 @@ export interface ProjectileSpawnedPayload {
 
 export interface ProjectileRemovedPayload {
   projectileId: number
-  reason: 'enemy_hit' | 'obstacle_hit' | 'range_expired' | 'match_ended'
+  reason: 'enemy_hit' | 'obstacle_hit' | 'range_expired' | 'match_ended' | 'player_hit'
 }
 
 export interface MatchEndedPayload {
@@ -170,7 +175,7 @@ export interface ErrorPayload {
   message: string
 }
 
-export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration'
+export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration' | 'explosion_radius' | 'explosion_duration'
 export interface UpgradeAppliedPayload {
   playerId: string
   source: 'level_up' | 'treasure_chest'
@@ -361,11 +366,16 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.f32(monster.x)
     writer.f32(monster.y)
     writer.string(monster.typeId)
-    writer.u16(monster.hp)
-    writer.u16(monster.maxHp)
+    writer.u32(monster.hp)
+    writer.u32(monster.maxHp)
+    writer.u8(Number(monster.isBoss))
   }
   writer.u16(payload.beams.length)
   for (const beam of payload.beams) { writer.u32(beam.id); writer.string(beam.ownerId); writer.string(beam.spellId); writer.f32(beam.x); writer.f32(beam.y); writer.f32(beam.angle); writer.f32(beam.length); writer.f32(beam.width); writer.u32(beam.remainingMs) }
+  writer.u16(payload.explosions.length)
+  for (const explosion of payload.explosions) { writer.u32(explosion.id); writer.string(explosion.ownerId); writer.string(explosion.spellId); writer.f32(explosion.x); writer.f32(explosion.y); writer.f32(explosion.radius); writer.u32(explosion.remainingMs) }
+  writer.u16(payload.meteors.length)
+  for (const meteor of payload.meteors) { writer.u32(meteor.id); writer.f32(meteor.x); writer.f32(meteor.y); writer.f32(meteor.radius); writer.u32(meteor.impactInMs); writer.u32(meteor.remainingMs) }
   writer.u16(payload.pickups.length)
   for (const pickup of payload.pickups) {
     writer.u32(pickup.id)
@@ -428,7 +438,7 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
   }
 }
 
-const upgradeAttributes = new Set<UpgradeAttribute>(['max_health', 'armor', 'movement_speed', 'health_regeneration', 'attack_buff', 'cooldown', 'spell_damage', 'projectile_speed', 'spell_burst', 'spell_directions', 'beam_length', 'beam_width', 'spell_duration'])
+const upgradeAttributes = new Set<UpgradeAttribute>(['max_health', 'armor', 'movement_speed', 'health_regeneration', 'attack_buff', 'cooldown', 'spell_damage', 'projectile_speed', 'spell_burst', 'spell_directions', 'beam_length', 'beam_width', 'spell_duration', 'explosion_radius', 'explosion_duration'])
 
 function decodeRoomState(reader: BinaryReader): RoomStatePayload {
   const status = decodeRoomStatus(reader.u8())
@@ -467,7 +477,7 @@ function decodeMatchStarted(reader: BinaryReader): MatchStartedPayload {
   const events: SystemEventPayload[] = []
   for (let index = 0; index < eventCount; index += 1) {
     const id = reader.string(), type = reader.string(), title = reader.string(), description = reader.string(), atMs = reader.u32()
-    if (type !== 'spawn_rate' && type !== 'monster_buff' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
+    if (type !== 'spawn_rate' && type !== 'monster_buff' && type !== 'meteor_shower' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
     events.push({ id, type, title, description, atMs })
   }
   return { roomName, mapId, mapWidth, mapHeight, startedAtMs, obstacles, durationMs, events }
@@ -507,11 +517,21 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   for (let index = 0; index < monsterCount; index += 1) {
     const id = reader.u32(), x = reader.f32(), y = reader.f32(), typeId = reader.string()
     if (typeId !== 'slime-stage-1' && typeId !== 'slime-stage-2' && typeId !== 'slime-stage-3') throw new Error(`Unknown monster type: ${typeId}`)
-    monsters.push({ id, x, y, typeId, hp: reader.u16(), maxHp: reader.u16() })
+    const hp = reader.u32(), maxHp = reader.u32(), flags = reader.u8()
+    if ((flags & ~1) !== 0) throw new Error(`Invalid monster flags: ${flags}`)
+    monsters.push({ id, x, y, typeId, hp, maxHp, isBoss: (flags & 1) !== 0 })
   }
   const beamCount = reader.u16()
   const beams: SnapshotBeam[] = []
   for (let index = 0; index < beamCount; index += 1) beams.push({ id: reader.u32(), ownerId: reader.string(), spellId: reader.string(), x: reader.f32(), y: reader.f32(), angle: reader.f32(), length: reader.f32(), width: reader.f32(), remainingMs: reader.u32() })
+  const explosionCount = reader.u16()
+  if (explosionCount > 256) throw new Error(`Explosion count exceeds limit: ${explosionCount}`)
+  const explosions: SnapshotExplosion[] = []
+  for (let index = 0; index < explosionCount; index += 1) explosions.push({ id: reader.u32(), ownerId: reader.string(), spellId: reader.string(), x: reader.f32(), y: reader.f32(), radius: reader.f32(), remainingMs: reader.u32() })
+  const meteorCount = reader.u16()
+  if (meteorCount > 256) throw new Error(`Meteor count exceeds limit: ${meteorCount}`)
+  const meteors: SnapshotMeteor[] = []
+  for (let index = 0; index < meteorCount; index += 1) meteors.push({ id: reader.u32(), x: reader.f32(), y: reader.f32(), radius: reader.f32(), impactInMs: reader.u32(), remainingMs: reader.u32() })
   const pickupCount = reader.u16()
   if (pickupCount > 2048) throw new Error(`Pickup count exceeds limit: ${pickupCount}`)
   const pickups: SnapshotPickup[] = []
@@ -524,6 +544,8 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     players,
     monsters,
     beams,
+    explosions,
+    meteors,
     pickups,
     team: {
       level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(),
@@ -696,7 +718,7 @@ function decodeRoomStatus(value: number): RoomStatePayload['status'] {
 }
 
 function encodeRemovalReason(reason: ProjectileRemovedPayload['reason']): number {
-  return reason === 'enemy_hit' ? 0 : reason === 'obstacle_hit' ? 1 : reason === 'range_expired' ? 2 : 3
+  return reason === 'enemy_hit' ? 0 : reason === 'obstacle_hit' ? 1 : reason === 'range_expired' ? 2 : reason === 'match_ended' ? 3 : 4
 }
 
 function decodeRemovalReason(value: number): ProjectileRemovedPayload['reason'] {
@@ -704,6 +726,7 @@ function decodeRemovalReason(value: number): ProjectileRemovedPayload['reason'] 
   if (value === 1) return 'obstacle_hit'
   if (value === 2) return 'range_expired'
   if (value === 3) return 'match_ended'
+  if (value === 4) return 'player_hit'
   throw new Error(`Unknown projectile removal reason: ${value}`)
 }
 

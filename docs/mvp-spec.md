@@ -37,7 +37,7 @@ Controls:
 
 | Property | MVP value |
 | --- | ---: |
-| Level 1 duration | 6 minutes |
+| Level 1 duration | 15 minutes |
 | Map | 3200 x 1800 units |
 | Simulation | 20 ticks/second |
 | Snapshots | 10/second |
@@ -61,8 +61,16 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 
 - HP `90`, speed `210`, pickup radius `125`, weapon `soul-track`.
 - Soul Track is a server-authoritative beam: damage `18`, cooldown `1500 ms`, length `520`, width `32`, linger `1000 ms`, damage interval `500 ms`, directions `1`.
+- Beam length is also its targeting range; runtime content loading derives the common weapon range from `beam_length`.
 - Every enemy overlapping the beam is damaged independently on its contact interval. The beam is replicated as active geometry in snapshots; the client does not report hits.
 - Deterministic spell levels improve length, cooldown, linger duration, width, directions, then damage.
+
+### Catapult
+
+- HP `115`, speed `195`, pickup radius `115`, default spell `rocket`.
+- Rocket: impact damage `20`, explosion-tick damage `30`, cooldown `1600 ms`, speed `480`, range `850`, projectile radius `12`, explosion radius `80`, linger `1000 ms`, damage interval `500 ms`, directions `1`.
+- Its small rectangular projectile applies direct impact damage to the enemy it hits, then explodes. Obstacle and range impacts still create the explosion without direct damage. Every enemy overlapping the lingering explosion takes authoritative damage on its contact interval.
+- Spells are independent content. Every character has starting spell IDs and one default active spell; acquisition and switching remain a later inventory milestone.
 
 ### Guardian
 
@@ -74,11 +82,16 @@ All source sprites face right. Horizontal movement sets facing; vertical movemen
 
 ### Level 1 Slimes
 
-- Stage 1 (`0:00`): HP `40`, speed `80`, contact damage `10`, radius `24`, XP `1`.
+- Stage 1 (`0:00`): HP `60`, speed `80`, contact damage `10`, radius `24`, XP `1`.
 - Stage 2 (`1:00`): replaces normal Stage 1 spawns; HP `90`, speed `92`, contact damage `16`, radius `30`, XP `2`.
-- Stage 3 boss (`5:00`): one boss spawns with HP `1800`, speed `62`, contact damage `28`, radius `54`, XP `30`.
-- At `6:00`, the level ends and clients show `kills × 100 + team level × 250 + survived seconds` as the final score.
+- Slime King base values are loaded from `game-data/game.json`: HP `2400` before event/global multipliers. Level 1 has meaningful boss encounters at `5:00`, `10:00`, and `14:00`; the first two guarantee treasure chests and only the final boss ends the level when killed. `15:00` remains the fixed fallback.
+- Slime King has Fireball in its enemy spell loadout. It fires at the nearest living player only within Fireball's configured `700`-unit range; projectiles respect configured speed/radius/range, rocks, player armor, and boss damage multipliers.
+- While boss-event monsters are alive, compact cards below the top-right menu show the boss sprite and authoritative health. Concurrent bosses share the row as equal-width columns.
+- The opening deliberately ramps from small Slimes into mixed waves so early XP produces upgrades before the first boss. Focused meteor acts run from `8:00–9:30` and `12:00–14:00`, separated by boss/reward and escalation beats. At `15:00`, the fixed end event remains a fallback and clients show the final score.
 - Every Slime targets the nearest living player, moves directly, slides around obstacles, and drops XP on death.
+- Monsters use soft local separation: nearby enemies gently push apart while retaining substantial overlap and continuing to pursue players. Separation is not rigid-body collision and does not block the swarm.
+- Enemy armor is flat damage reduction applied independently to projectile impact, normal projectile, beam, and explosion hits. All current enemies default to armor `1`; a valid hit always deals at least `1` damage.
+- Every non-ending boss-event kill drops a power crate regardless of the normal every-12-kills crate cadence.
 
 ### Meadow
 

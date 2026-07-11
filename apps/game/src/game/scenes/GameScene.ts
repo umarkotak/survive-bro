@@ -12,6 +12,8 @@ import type {
   RoomStatePayload,
   SnapshotMonster,
   SnapshotBeam,
+  SnapshotExplosion,
+  SnapshotMeteor,
   SnapshotPayload,
   SnapshotPickup,
   SnapshotPlayer,
@@ -56,6 +58,8 @@ interface ProjectileView {
   velocityY: number
 }
 interface BeamView { shape: Phaser.GameObjects.Rectangle }
+interface ExplosionView { shape: Phaser.GameObjects.Arc }
+interface MeteorView { zone: Phaser.GameObjects.Arc; marker: Phaser.GameObjects.Arc }
 
 interface PickupView {
   sprite: Phaser.GameObjects.Image
@@ -84,6 +88,8 @@ export class GameScene extends Phaser.Scene {
   private readonly pickups = new Map<number, PickupView>()
   private readonly projectiles = new Map<number, ProjectileView>()
   private readonly beams = new Map<number, BeamView>()
+  private readonly explosions = new Map<number, ExplosionView>()
+  private readonly meteors = new Map<number, MeteorView>()
   private readonly pickupAbsorptions: PickupAbsorption[] = []
   private readonly obstacleSprites: Phaser.GameObjects.Image[] = []
   private obstacles: MatchStartedPayload['obstacles'] = []
@@ -181,6 +187,10 @@ export class GameScene extends Phaser.Scene {
     this.projectiles.clear()
     for (const beam of this.beams.values()) beam.shape.destroy()
     this.beams.clear()
+    for (const explosion of this.explosions.values()) explosion.shape.destroy()
+    this.explosions.clear()
+    for (const meteor of this.meteors.values()) { meteor.zone.destroy(); meteor.marker.destroy() }
+    this.meteors.clear()
     this.obstacles = payload.obstacles
     this.cameras.main.setBounds(0, 0, payload.mapWidth, payload.mapHeight)
     for (const obstacle of payload.obstacles) {
@@ -193,7 +203,7 @@ export class GameScene extends Phaser.Scene {
           .setData('obstacle-id', obstacle.id),
       )
     }
-    this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing', levelDurationMs: payload.durationMs, timelineEvents: payload.events })
+    this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing', levelDurationMs: payload.durationMs, timelineEvents: payload.events, bosses: [] })
   }
 
   private handleRoomState(payload: RoomStatePayload): void {
@@ -229,6 +239,8 @@ export class GameScene extends Phaser.Scene {
 
     this.syncMonsters(snapshot.monsters)
     this.syncBeams(snapshot.beams)
+    this.syncExplosions(snapshot.explosions)
+    this.syncMeteors(snapshot.meteors)
     this.syncPickups(snapshot.pickups)
     this.updateCameraTarget(snapshot.players)
 
@@ -245,6 +257,7 @@ export class GameScene extends Phaser.Scene {
         remainingMs: snapshot.remainingMs,
         kills: snapshot.team.totalKills,
         enemies: snapshot.monsters.length,
+        bosses: snapshot.monsters.filter((monster) => monster.isBoss).map((monster) => ({ id: monster.id, name: enemyDisplayName(monster.typeId), spriteId: `enemy-${monster.typeId}`, hp: monster.hp, maxHp: monster.maxHp })),
         playerCount: snapshot.players.length,
         armorPercent: local.armorPercent,
         movementSpeed: local.movementSpeed,
@@ -264,7 +277,7 @@ export class GameScene extends Phaser.Scene {
     if (owner) owner.attackUntil = this.time.now + attackFrameDurationMs
     if (payload.ownerId === this.session.network.playerId) gameAudio.fireball()
     const angle = Math.atan2(payload.velocityY, payload.velocityX)
-    const sprite = this.add.image(payload.x, payload.y, 'arc-bolt').setRotation(angle).setDepth(payload.y + 2)
+    const sprite = this.add.image(payload.x, payload.y, payload.weaponId === 'rocket' ? 'rocket' : 'arc-bolt').setRotation(angle).setDepth(payload.y + 2)
     this.projectiles.set(payload.projectileId, { sprite, velocityX: payload.velocityX, velocityY: payload.velocityY })
   }
 
@@ -555,6 +568,43 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private syncExplosions(explosions: SnapshotExplosion[]): void {
+    const active = new Set(explosions.map((explosion) => explosion.id))
+    for (const explosion of explosions) {
+      let view = this.explosions.get(explosion.id)
+      if (!view) {
+        view = { shape: this.add.circle(explosion.x, explosion.y, explosion.radius, 0xff7b35, 0.34).setStrokeStyle(5, 0xffd36a, 0.8).setBlendMode(Phaser.BlendModes.ADD) }
+        this.explosions.set(explosion.id, view)
+      }
+      const pulse = 0.92 + Math.sin(this.time.now / 70) * 0.08
+      view.shape.setPosition(explosion.x, explosion.y).setRadius(explosion.radius).setScale(pulse).setDepth(explosion.y + 1)
+    }
+    for (const [id, view] of this.explosions) {
+      if (!active.has(id)) { view.shape.destroy(); this.explosions.delete(id) }
+    }
+  }
+
+  private syncMeteors(meteors: SnapshotMeteor[]): void {
+	const active = new Set(meteors.map((meteor) => meteor.id))
+	for (const meteor of meteors) {
+		let view = this.meteors.get(meteor.id)
+		if (!view) {
+			view = {
+				zone: this.add.circle(meteor.x, meteor.y, meteor.radius, 0xff3d18, 0.08).setStrokeStyle(5, 0xffc247, 0.9),
+				marker: this.add.circle(meteor.x, meteor.y, 12, 0xfff0b0, 0.95).setStrokeStyle(3, 0xff4b1f, 1),
+			}
+			this.meteors.set(meteor.id, view)
+		}
+		const warning = meteor.impactInMs > 0
+		const pulse = 0.94 + Math.sin(this.time.now / (warning ? 90 : 55)) * 0.06
+		view.zone.setPosition(meteor.x, meteor.y).setRadius(meteor.radius).setScale(pulse).setFillStyle(warning ? 0xff3d18 : 0xff6a18, warning ? 0.08 : 0.38).setStrokeStyle(warning ? 5 : 2, warning ? 0xffc247 : 0xff7b35, warning ? 0.9 : 0.5).setDepth(meteor.y + 1)
+		view.marker.setPosition(meteor.x, warning ? meteor.y - Math.min(180, 30 + meteor.impactInMs * 0.1) : meteor.y).setScale(warning ? 1 : 2.2).setAlpha(warning ? 1 : 0.35).setDepth(meteor.y + 2)
+	}
+	for (const [id, view] of this.meteors) {
+		if (!active.has(id)) { view.zone.destroy(); view.marker.destroy(); this.meteors.delete(id) }
+	}
+  }
+
   private syncPickups(pickups: SnapshotPickup[]): void {
     const active = new Set(pickups.map((pickup) => pickup.id))
     for (const pickup of pickups) {
@@ -607,6 +657,10 @@ export class GameScene extends Phaser.Scene {
     this.lastLocalHP = null
     for (const beam of this.beams.values()) beam.shape.destroy()
     this.beams.clear()
+    for (const explosion of this.explosions.values()) explosion.shape.destroy()
+    this.explosions.clear()
+    for (const meteor of this.meteors.values()) { meteor.zone.destroy(); meteor.marker.destroy() }
+    this.meteors.clear()
     for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
     this.pickupAbsorptions.length = 0
     this.unsubscribeNetwork?.()
@@ -632,6 +686,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
   }
+}
+
+function enemyDisplayName(typeId: SnapshotMonster['typeId']): string {
+  if (typeId === 'slime-stage-3') return 'Slime King'
+  return typeId.split('-').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ')
 }
 
 function initials(name: string): string {

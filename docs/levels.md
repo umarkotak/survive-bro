@@ -1,6 +1,6 @@
 # Level Framework
 
-Level definitions are server-owned in `apps/backend/internal/simulation/level.go`. A definition contains:
+Level definitions are loaded at backend startup from `game-data/game.json`. A definition contains:
 
 - Stable ID and display name.
 - Match duration.
@@ -13,7 +13,9 @@ Level definitions are server-owned in `apps/backend/internal/simulation/level.go
 Supported event types are deliberately small:
 
 - `spawn_rate`: replaces rate, maximum living count, and weighted normal-enemy composition independently.
-- `boss`: spawns one configured boss enemy.
+- `monster_buff`: multiplies enemy health and movement speed for living and future enemies.
+- `meteor_shower`: creates server-authoritative marked impact zones for a configured duration, warning time, rate, damage cadence, and lingering range.
+- `boss`: spawns one configured boss enemy, may apply per-stat positive multipliers, and may end the match when that exact boss instance dies. Boss multipliers compose with global monster buffs already active.
 - `end`: resolves the match and score.
 
 The create-room screen loads options from `GET /api/v1/levels` and sends the selected `levelId`. Rooms retain that definition for their lifetime, late joiners enter the same timeline, `match_started.mapId` carries the selected level ID, and snapshots carry each monster `typeId` so the client can select the correct visual.
@@ -22,11 +24,17 @@ The create-room screen loads options from `GET /api/v1/levels` and sends the sel
 
 | Time | Event |
 | ---: | --- |
-| `0:00` | `spawn_rate`: 1/sec, cap 60, 100% Slime Stage 1. |
-| `1:00` | `spawn_rate`: 1.8/sec, cap 110, 100% Slime Stage 2. Existing Stage 1 enemies remain. |
-| `3:00` | `monster_buff`: existing and future enemies gain `1.5×` HP and `1.2×` speed. |
-| `4:00` | `spawn_rate`: 2.4/sec, cap 150, 100% Slime Stage 2. |
-| `5:00` | Spawn one Slime Stage 3 boss. |
-| `6:00` | End the match and show score. |
+| `0:00` | Opening: Stage 1 at 0.8/sec, cap 40, giving players room to earn early upgrades. |
+| `1:30` | First Ripples: 1.2/sec, cap 70, 80% Stage 1 and 20% Stage 2. |
+| `3:00` | Greater Tide: 1.8/sec, cap 100, equal Stage 1/Stage 2 mix. |
+| `4:30` | Hardened Gel: enemies gain `1.2×` HP and `1.08×` speed. |
+| `5:00` | Vanguard Slime King: HP `×1.5`, damage `×1.15`; victory guarantees a treasure chest. |
+| `6:00` | Royal Retinue: 2.6/sec, cap 140, 80% Stage 2. |
+| `8:00` | Burning Horde: 3.4/sec, cap 180, plus a 90-second meteor shower at 0.35/sec. |
+| `10:00` | Warlord Slime King: HP `×2.5`, damage `×1.4`, speed `×1.12`; victory guarantees a treasure chest. Enemies also gain `1.25×` HP/`1.1×` speed and spawns rise to 4.2/sec, cap 220. |
+| `12:00` | Chaos Tide: 5.2/sec, cap 280, plus a denser two-minute meteor shower at 0.55/sec. |
+| `13:00` | Last Frenzy: enemies gain `1.2×` HP and `1.08×` speed. |
+| `14:00` | Sovereign Slime King: HP `×5`, damage `×1.8`, speed `×1.25`; defeating it ends the level. |
+| `15:00` | Fixed fallback end event. |
 
 Level 1 uses the three existing terrain variants and three large-rock variants. Add future levels by defining their content and adding them to `AvailableLevels`; the room selector and public room metadata use stable level IDs.
