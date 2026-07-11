@@ -13,7 +13,7 @@
 - Local Ranger movement prediction/reconciliation and remote-player interpolation.
 - Responsive virtual joystick movement on touch/mobile layouts; portrait phones place it at the bottom center for easier reach, while landscape keeps it bottom-left. Keyboard controls remain available.
 - Camera-edge teammate badges/arrows for players outside the viewport.
-- One consistent desktop/mobile HUD layer above Phaser: a 10-pixel full-width XP bar, health and level at top-left with a clickable `YOU` Ranger portrait, and a top-right room menu. The portrait opens separate character and Fireball statistic sections; the room menu owns the leave action.
+- One consistent desktop/mobile HUD layer above Phaser: XP at the bottom, health and level at top-left, room menu at top-right, and an authoritative system-event timeline across the top. Its fixed centre arrow represents now; the line and event markers move right-to-left as time advances, and clicking a marker opens the unified event-detail modal.
 - Shared level progression applies an independent random personal upgrade to every player. Chest collection upgrades only the collector. The menu displays current player and Fireball attributes.
 - The character-stat view formats each upgradable value as `base (+current bonus) final`. Authoritative level/chest events drive a top-centre toast and a current-run history modal; this history is client-local and clears when leaving the room.
 - A dependency-free Web Audio layer generates short, low-volume Fireball, player-damage, level-up, and treasure sounds. Audio unlocks on the first pointer or keyboard interaction so it follows browser autoplay rules; gameplay remains functional when audio is unavailable.

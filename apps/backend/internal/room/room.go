@@ -21,6 +21,7 @@ var (
 	ErrClosed                  = errors.New("room closed")
 	ErrFull                    = errors.New("room full")
 	ErrInvalidDisplayName      = errors.New("display name must contain 1 to 20 characters")
+	ErrInvalidCharacter        = errors.New("character does not exist")
 	ErrReconnectNotImplemented = errors.New("reconnection is not implemented yet")
 )
 
@@ -49,6 +50,7 @@ type JoinResult struct {
 type Player struct {
 	ID             string
 	DisplayName    string
+	CharacterID    string
 	ReconnectToken string
 	JoinedAt       time.Time
 	Send           chan protocol.Envelope
@@ -70,6 +72,7 @@ type summaryCommand struct{ response chan Summary }
 
 type joinCommand struct {
 	displayName    string
+	characterID    string
 	reconnectToken *string
 	send           chan protocol.Envelope
 	response       chan joinResponse
@@ -131,8 +134,12 @@ func (r *Room) Summary(ctx context.Context) (Summary, error) {
 }
 
 func (r *Room) Join(ctx context.Context, displayName string, reconnectToken *string, send chan protocol.Envelope) (JoinResult, error) {
+	return r.JoinCharacter(ctx, displayName, "ranger", reconnectToken, send)
+}
+
+func (r *Room) JoinCharacter(ctx context.Context, displayName, characterID string, reconnectToken *string, send chan protocol.Envelope) (JoinResult, error) {
 	response := make(chan joinResponse, 1)
-	command := joinCommand{displayName: displayName, reconnectToken: reconnectToken, send: send, response: response}
+	command := joinCommand{displayName: displayName, characterID: characterID, reconnectToken: reconnectToken, send: send, response: response}
 	if err := r.send(ctx, command); err != nil {
 		return JoinResult{}, err
 	}
@@ -314,6 +321,9 @@ func (r *Room) join(clients map[string]*Player, hostPlayerID *string, match **si
 	if command.reconnectToken != nil {
 		return JoinResult{}, false, ErrReconnectNotImplemented
 	}
+	if _, ok := simulation.CharacterByID(command.characterID); !ok {
+		return JoinResult{}, false, ErrInvalidCharacter
+	}
 	if len(clients) >= MaxPlayers {
 		return JoinResult{}, false, ErrFull
 	}
@@ -326,7 +336,7 @@ func (r *Room) join(clients map[string]*Player, hostPlayerID *string, match **si
 	if err != nil {
 		return JoinResult{}, false, err
 	}
-	client := &Player{ID: playerID, DisplayName: name, ReconnectToken: reconnectToken, JoinedAt: r.now(), Send: command.send}
+	client := &Player{ID: playerID, DisplayName: name, CharacterID: command.characterID, ReconnectToken: reconnectToken, JoinedAt: r.now(), Send: command.send}
 	clients[playerID] = client
 	if *hostPlayerID == "" {
 		*hostPlayerID = playerID
@@ -336,10 +346,10 @@ func (r *Room) join(clients map[string]*Player, hostPlayerID *string, match **si
 	if createdMatch {
 		*match = simulation.NewMatch(r.now(), r.now().UnixNano(), r.level)
 		for _, existing := range orderedPlayers(clients) {
-			(*match).AddPlayer(existing.ID, existing.DisplayName, r.now())
+			(*match).AddPlayer(existing.ID, existing.DisplayName, r.now(), existing.CharacterID)
 		}
 	} else {
-		(*match).AddPlayer(playerID, name, r.now())
+		(*match).AddPlayer(playerID, name, r.now(), command.characterID)
 	}
 
 	joined, err := protocol.NewEnvelope(protocol.TypeJoined, "", protocol.JoinedPayload{
@@ -401,9 +411,14 @@ func (r *Room) sendMatchStarted(client *Player, match *simulation.Match) {
 		MapHeight:   simulation.WorldHeight,
 		StartedAtMs: match.StartedAt.UnixMilli(),
 		Obstacles:   make([]protocol.Obstacle, 0, len(r.level.Obstacles)),
+		DurationMs:  r.level.Duration.Milliseconds(),
+		Events:      make([]protocol.SystemEvent, 0, len(r.level.Events)),
 	}
 	for _, obstacle := range r.level.Obstacles {
 		payload.Obstacles = append(payload.Obstacles, protocol.Obstacle{ID: obstacle.ID, Type: obstacle.Type, X: obstacle.X, Y: obstacle.Y, Radius: obstacle.Radius})
+	}
+	for _, event := range r.level.Events {
+		payload.Events = append(payload.Events, protocol.SystemEvent{ID: event.ID, Type: event.Type, Title: event.Title, Description: event.Description, AtMs: event.At.Milliseconds()})
 	}
 	envelope, err := protocol.NewEnvelope(protocol.TypeMatchStarted, "", payload)
 	if err == nil {
@@ -489,7 +504,7 @@ func (r *Room) broadcastRoomState(clients map[string]*Player, hostPlayerID strin
 		states = append(states, protocol.PlayerState{
 			ID:          player.ID,
 			DisplayName: player.DisplayName,
-			CharacterID: "ranger",
+			CharacterID: player.CharacterID,
 			Ready:       true,
 			Connected:   true,
 		})

@@ -13,32 +13,47 @@ import (
 var ErrInvalidInput = errors.New("movement input is invalid")
 
 type Player struct {
-	ID                 string
-	DisplayName        string
-	X                  float64
-	Y                  float64
-	VelocityX          float64
-	VelocityY          float64
-	MoveX              float64
-	MoveY              float64
-	Facing             string
-	HP                 int
-	Alive              bool
-	LastInputAt        time.Time
-	LastProcessedInput uint64
-	LastAttackAt       time.Duration
-	Kills              int
-	MaxHP              int
-	ArmorPercent       float64
-	MovementSpeed      float64
-	HealthRegeneration float64
-	AttackBuffPercent  float64
-	CooldownPercent    float64
-	SpellDamage        int
-	ProjectileSpeed    float64
-	SpellBurst         int
-	SpellDirections    int
-	regenAccumulator   float64
+	ID                     string
+	DisplayName            string
+	CharacterID            string
+	SpellID                string
+	X                      float64
+	Y                      float64
+	VelocityX              float64
+	VelocityY              float64
+	MoveX                  float64
+	MoveY                  float64
+	Facing                 string
+	HP                     int
+	Alive                  bool
+	LastInputAt            time.Time
+	LastProcessedInput     uint64
+	LastAttackAt           time.Duration
+	Kills                  int
+	MaxHP                  int
+	ArmorPercent           float64
+	MovementSpeed          float64
+	HealthRegeneration     float64
+	AttackBuffPercent      float64
+	CooldownPercent        float64
+	SpellDamage            int
+	ProjectileSpeed        float64
+	SpellBurst             int
+	SpellDirections        int
+	SpellCooldown          time.Duration
+	SpellRange             float64
+	ProjectileRadius       float64
+	BaseMaxHP              int
+	BaseArmorPercent       float64
+	BaseMovementSpeed      float64
+	BaseHealthRegeneration float64
+	BaseAttackBuffPercent  float64
+	BaseCooldownPercent    float64
+	BaseSpellDamage        int
+	BaseProjectileSpeed    float64
+	BaseSpellBurst         int
+	BaseSpellDirections    int
+	regenAccumulator       float64
 }
 
 type Monster struct {
@@ -53,6 +68,7 @@ type Monster struct {
 	ContactDamage int
 	ContactDelay  time.Duration
 	Experience    int
+	Score         int
 	LastContact   map[string]time.Duration
 }
 
@@ -65,6 +81,8 @@ type Projectile struct {
 	VelocityY float64
 	Travelled float64
 	Damage    int
+	Range     float64
+	Radius    float64
 }
 
 type Pickup struct {
@@ -113,10 +131,11 @@ type Match struct {
 	TeamLevel        int
 	TeamExperience   int
 	TotalKills       int
+	EnemyScore       int
 	Elapsed          time.Duration
 	Finished         bool
 	Level            LevelDefinition
-	activeEnemyID    string
+	activeSpawn      SpawnRateDefinition
 	nextLevelEvent   int
 	spawnBudget      float64
 	nextMonsterID    uint64
@@ -130,38 +149,60 @@ func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match
 	if len(levels) > 0 {
 		level = levels[0]
 	}
-	return &Match{
-		StartedAt:     startedAt,
-		Players:       make(map[string]*Player),
-		Monsters:      make(map[uint64]*Monster),
-		Projectiles:   make(map[uint64]*Projectile),
-		Pickups:       make(map[uint64]*Pickup),
-		TeamLevel:     1,
-		Level:         level,
-		activeEnemyID: level.InitialEnemyID,
-		rng:           rand.New(rand.NewSource(seed)),
+	match := &Match{
+		StartedAt:   startedAt,
+		Players:     make(map[string]*Player),
+		Monsters:    make(map[uint64]*Monster),
+		Projectiles: make(map[uint64]*Projectile),
+		Pickups:     make(map[uint64]*Pickup),
+		TeamLevel:   1,
+		Level:       level,
+		rng:         rand.New(rand.NewSource(seed)),
 	}
+	match.processLevelEvents(&Events{})
+	return match
 }
 
-func (m *Match) AddPlayer(id, displayName string, now time.Time) *Player {
+func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ...string) *Player {
+	characterID := "ranger"
+	if len(characterIDs) > 0 && characterIDs[0] != "" {
+		characterID = characterIDs[0]
+	}
+	character, ok := CharacterByID(characterID)
+	if !ok {
+		character = characters["ranger"]
+	}
+	spell, _ := SpellByID(character.BaseSpellID)
 	order := len(m.Players)
 	angle := float64(order) * (2 * math.Pi / 6)
 	player := &Player{
-		ID:              id,
-		DisplayName:     displayName,
-		X:               PlayerSpawnX + math.Cos(angle)*PlayerSpawnRadius,
-		Y:               PlayerSpawnY + math.Sin(angle)*PlayerSpawnRadius,
-		Facing:          "right",
-		HP:              PlayerMaxHP,
-		MaxHP:           PlayerMaxHP,
-		MovementSpeed:   PlayerSpeed,
-		SpellDamage:     WeaponDamage,
-		ProjectileSpeed: ProjectileSpeed,
-		SpellBurst:      1,
-		SpellDirections: 1,
-		Alive:           true,
-		LastInputAt:     now,
-		LastAttackAt:    -WeaponCooldown,
+		ID:                 id,
+		DisplayName:        displayName,
+		CharacterID:        character.ID,
+		SpellID:            spell.ID,
+		X:                  PlayerSpawnX + math.Cos(angle)*PlayerSpawnRadius,
+		Y:                  PlayerSpawnY + math.Sin(angle)*PlayerSpawnRadius,
+		Facing:             "right",
+		HP:                 character.MaxHP,
+		MaxHP:              character.MaxHP,
+		ArmorPercent:       character.ArmorPercent,
+		MovementSpeed:      character.MovementSpeed,
+		HealthRegeneration: character.HealthRegeneration,
+		AttackBuffPercent:  character.AttackBuffPercent,
+		CooldownPercent:    character.CooldownPercent,
+		SpellDamage:        spell.Damage,
+		ProjectileSpeed:    spell.ProjectileSpeed,
+		SpellBurst:         spell.Burst,
+		SpellDirections:    spell.Directions,
+		SpellCooldown:      spell.Cooldown,
+		SpellRange:         spell.Range,
+		ProjectileRadius:   spell.Radius,
+		BaseMaxHP:          character.MaxHP, BaseArmorPercent: character.ArmorPercent, BaseMovementSpeed: character.MovementSpeed,
+		BaseHealthRegeneration: character.HealthRegeneration, BaseAttackBuffPercent: character.AttackBuffPercent, BaseCooldownPercent: character.CooldownPercent,
+		BaseSpellDamage: spell.Damage, BaseProjectileSpeed: spell.ProjectileSpeed, BaseSpellBurst: spell.Burst, BaseSpellDirections: spell.Directions,
+		Alive:        true,
+		LastInputAt:  now,
+		LastAttackAt: -spell.Cooldown,
 	}
 	m.Players[id] = player
 	return player
@@ -240,6 +281,7 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 		players = append(players, protocol.SnapshotPlayer{
 			ID:                 player.ID,
 			DisplayName:        player.DisplayName,
+			CharacterID:        player.CharacterID,
 			X:                  player.X,
 			Y:                  player.Y,
 			VelocityX:          player.VelocityX,
@@ -327,12 +369,12 @@ func (m *Match) updatePlayers(now time.Time) {
 
 func (m *Match) updateWeapons(events *Events) {
 	for _, player := range m.Players {
-		cooldown := time.Duration(float64(WeaponCooldown) * (1 - player.CooldownPercent))
+		cooldown := time.Duration(float64(player.SpellCooldown) * (1 - player.CooldownPercent))
 		if !player.Alive || m.Elapsed-player.LastAttackAt < cooldown {
 			continue
 		}
 		var target *Monster
-		nearest := ProjectileRange
+		nearest := player.SpellRange
 		for _, monster := range m.Monsters {
 			distance := math.Hypot(monster.X-player.X, monster.Y-player.Y)
 			if distance <= nearest {
@@ -358,12 +400,14 @@ func (m *Match) updateWeapons(events *Events) {
 					VelocityX: math.Cos(angle) * player.ProjectileSpeed,
 					VelocityY: math.Sin(angle) * player.ProjectileSpeed,
 					Damage:    int(math.Round(float64(player.SpellDamage) * (1 + player.AttackBuffPercent))),
+					Range:     player.SpellRange,
+					Radius:    player.ProjectileRadius,
 				}
 				m.Projectiles[projectile.ID] = projectile
 				events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{
 					ProjectileID: projectile.ID,
 					OwnerID:      player.ID,
-					WeaponID:     "fireball",
+					WeaponID:     player.SpellID,
 					X:            projectile.X,
 					Y:            projectile.Y,
 					VelocityX:    projectile.VelocityX,
@@ -384,7 +428,7 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 		projectile.X += stepX
 		projectile.Y += stepY
 		projectile.Travelled += math.Hypot(stepX, stepY)
-		if projectile.Travelled >= ProjectileRange {
+		if projectile.Travelled >= projectile.Range {
 			m.removeProjectile(id, "range_expired", events)
 		}
 	}
@@ -392,7 +436,7 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 
 	narrowStarted := time.Now()
 	for id, projectile := range m.Projectiles {
-		obstacleHit, obstacleChecks := collidesObstacleCounted(projectile.X, projectile.Y, ProjectileRadius, m.Level.Obstacles)
+		obstacleHit, obstacleChecks := collidesObstacleCounted(projectile.X, projectile.Y, projectile.Radius, m.Level.Obstacles)
 		metrics.CandidatePairs += obstacleChecks
 		metrics.NarrowChecks += obstacleChecks
 		if obstacleHit {
@@ -403,7 +447,7 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 		for monsterID, monster := range m.Monsters {
 			metrics.CandidatePairs++
 			metrics.NarrowChecks++
-			if !overlaps(projectile.X, projectile.Y, ProjectileRadius, monster.X, monster.Y, monster.Radius) {
+			if !overlaps(projectile.X, projectile.Y, projectile.Radius, monster.X, monster.Y, monster.Radius) {
 				continue
 			}
 			monster.HP -= projectile.Damage
@@ -501,25 +545,45 @@ func (m *Match) updatePickups(events *Events) {
 }
 
 func (m *Match) spawnMonsters() {
-	baseRate, baseMax := difficulty(m.Elapsed)
 	multiplier := 1 + 0.55*float64(len(m.Players)-1)
-	maximum := int(math.Round(float64(baseMax) * multiplier))
+	maximum := int(math.Round(float64(m.activeSpawn.MaxLiving) * multiplier))
+	if maximum == 0 || len(m.activeSpawn.Entries) == 0 {
+		return
+	}
 	if len(m.Monsters) >= maximum {
 		return
 	}
-	m.spawnBudget += baseRate * multiplier * TickDuration.Seconds()
+	m.spawnBudget += m.activeSpawn.RatePerSecond * multiplier * TickDuration.Seconds()
 	for m.spawnBudget >= 1 && len(m.Monsters) < maximum {
 		m.spawnBudget--
-		m.spawnMonsterOf(m.activeEnemyID)
+		m.spawnMonsterOf(m.selectSpawnEnemy())
 	}
 }
 
 func (m *Match) spawnMonster() {
-	m.spawnMonsterOf(m.activeEnemyID)
+	m.spawnMonsterOf(m.selectSpawnEnemy())
+}
+
+func (m *Match) selectSpawnEnemy() string {
+	total := 0
+	for _, entry := range m.activeSpawn.Entries {
+		total += max(0, entry.Weight)
+	}
+	if total == 0 {
+		return ""
+	}
+	roll := m.rng.Intn(total)
+	for _, entry := range m.activeSpawn.Entries {
+		roll -= max(0, entry.Weight)
+		if roll < 0 {
+			return entry.EnemyID
+		}
+	}
+	return ""
 }
 
 func (m *Match) spawnMonsterOf(enemyID string) {
-	definition, ok := m.Level.Enemies[enemyID]
+	definition, ok := EnemyByID(enemyID)
 	if !ok {
 		return
 	}
@@ -547,7 +611,7 @@ func (m *Match) spawnMonsterOf(enemyID string) {
 			continue
 		}
 		m.nextMonsterID++
-		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: definition.MaxHP, MaxHP: definition.MaxHP, Speed: definition.Speed, Radius: definition.Radius, ContactDamage: definition.ContactDamage, ContactDelay: definition.ContactDelay, Experience: definition.Experience, LastContact: make(map[string]time.Duration)}
+		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: definition.MaxHP, MaxHP: definition.MaxHP, Speed: definition.Speed, Radius: definition.Radius, ContactDamage: definition.ContactDamage, ContactDelay: definition.ContactDelay, Experience: definition.Experience, Score: definition.Score, LastContact: make(map[string]time.Duration)}
 		return
 	}
 }
@@ -563,6 +627,7 @@ func (m *Match) killMonster(monsterID uint64, ownerID string) {
 	m.nextPickupID++
 	m.Pickups[m.nextPickupID] = &Pickup{ID: m.nextPickupID, Kind: "experience", X: monster.X, Y: monster.Y, Value: monster.Experience}
 	m.TotalKills++
+	m.EnemyScore += monster.Score
 	if m.TotalKills%PowerCrateEveryKills == 0 {
 		m.nextPickupID++
 		x, y := resolveWorldAndObstacles(monster.X+44, monster.Y, 18, m.Level.Obstacles)
@@ -578,7 +643,7 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 	if player.ArmorPercent < MaximumArmorPercent {
 		available = append(available, "armor")
 	}
-	if player.MovementSpeed < PlayerSpeed*(1+MaximumMovementBonus) {
+	if player.MovementSpeed < player.BaseMovementSpeed*(1+MaximumMovementBonus) {
 		available = append(available, "movement_speed")
 	}
 	if player.CooldownPercent < 0.60 {
@@ -594,44 +659,44 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 	baseValue, addedValue, finalValue := 0.0, 0.0, 0.0
 	switch attribute {
 	case "max_health":
-		baseValue, addedValue = PlayerMaxHP, 20
+		baseValue, addedValue = float64(player.BaseMaxHP), 20
 		player.MaxHP += 20
 		player.HP += 20
 		finalValue = float64(player.MaxHP)
 	case "armor":
-		baseValue, addedValue = 0, 0.05
+		baseValue, addedValue = player.BaseArmorPercent, 0.05
 		player.ArmorPercent = min(MaximumArmorPercent, player.ArmorPercent+0.05)
 		finalValue = player.ArmorPercent
 	case "movement_speed":
-		baseValue, addedValue = PlayerSpeed, PlayerSpeed*0.08
-		player.MovementSpeed = min(PlayerSpeed*(1+MaximumMovementBonus), player.MovementSpeed+PlayerSpeed*0.08)
+		baseValue, addedValue = player.BaseMovementSpeed, player.BaseMovementSpeed*0.08
+		player.MovementSpeed = min(player.BaseMovementSpeed*(1+MaximumMovementBonus), player.MovementSpeed+player.BaseMovementSpeed*0.08)
 		finalValue = player.MovementSpeed
 	case "health_regeneration":
-		baseValue, addedValue = 0, 1
+		baseValue, addedValue = player.BaseHealthRegeneration, 1
 		player.HealthRegeneration += 1
 		finalValue = player.HealthRegeneration
 	case "attack_buff":
-		baseValue, addedValue = 0, 0.10
+		baseValue, addedValue = player.BaseAttackBuffPercent, 0.10
 		player.AttackBuffPercent += 0.10
 		finalValue = player.AttackBuffPercent
 	case "cooldown":
-		baseValue, addedValue = 0, 0.08
+		baseValue, addedValue = player.BaseCooldownPercent, 0.08
 		player.CooldownPercent = min(0.60, player.CooldownPercent+0.08)
 		finalValue = player.CooldownPercent
 	case "spell_damage":
-		baseValue, addedValue = WeaponDamage, 4
+		baseValue, addedValue = float64(player.BaseSpellDamage), 4
 		player.SpellDamage += 4
 		finalValue = float64(player.SpellDamage)
 	case "projectile_speed":
-		baseValue, addedValue = ProjectileSpeed, 70
+		baseValue, addedValue = player.BaseProjectileSpeed, 70
 		player.ProjectileSpeed += 70
 		finalValue = player.ProjectileSpeed
 	case "spell_burst":
-		baseValue, addedValue = 1, 1
+		baseValue, addedValue = float64(player.BaseSpellBurst), 1
 		player.SpellBurst++
 		finalValue = float64(player.SpellBurst)
 	case "spell_directions":
-		baseValue, addedValue = 1, 1
+		baseValue, addedValue = float64(player.BaseSpellDirections), 1
 		player.SpellDirections++
 		finalValue = float64(player.SpellDirections)
 	}
@@ -668,8 +733,10 @@ func (m *Match) processLevelEvents(events *Events) {
 		event := m.Level.Events[m.nextLevelEvent]
 		m.nextLevelEvent++
 		switch event.Type {
-		case "enemy_stage":
-			m.activeEnemyID = event.EnemyID
+		case "spawn_rate":
+			if event.SpawnRate != nil {
+				m.activeSpawn = *event.SpawnRate
+			}
 		case "boss":
 			m.spawnMonsterOf(event.EnemyID)
 		case "end":
@@ -688,7 +755,7 @@ func (m *Match) finish(outcome string, events *Events) {
 		SurvivalMs: m.Elapsed.Milliseconds(),
 		TeamLevel:  m.TeamLevel,
 		TotalKills: m.TotalKills,
-		Score:      m.TotalKills*100 + m.TeamLevel*250 + int(m.Elapsed/time.Second),
+		Score:      m.EnemyScore + m.TeamLevel*250 + int(m.Elapsed/time.Second),
 	}
 }
 
@@ -729,19 +796,6 @@ func (m *Match) nearestLivingPlayer(x, y float64) *Player {
 
 func RequiredExperience(level int) int {
 	return int(math.Round(8 + 5*math.Pow(float64(level), 1.45)))
-}
-
-func difficulty(elapsed time.Duration) (float64, int) {
-	switch {
-	case elapsed < time.Minute:
-		return 1, 60
-	case elapsed < 150*time.Second:
-		return 1.8, 110
-	case elapsed < 240*time.Second:
-		return 2.7, 170
-	default:
-		return 3.5, 240
-	}
 }
 
 func resolveWorldAndObstacles(x, y, radius float64, obstacles ...[]Obstacle) (float64, float64) {

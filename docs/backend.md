@@ -68,13 +68,14 @@ GET  /health/ready
 GET  /metrics
 GET  /api/v1/rooms
 GET  /api/v1/levels
+GET  /api/v1/characters
 POST /api/v1/rooms
 PUT  /api/v1/rooms/{roomName}
 GET  /api/v1/rooms/{roomName}
 GET  /ws/v2/rooms/{roomName}
 ```
 
-The room collection `GET` returns room code, level, state, occupancy, capacity, and joinability without exposing player names. The level collection exposes selectable level IDs, names, and durations from the server definitions. `PUT` canonicalizes a valid room name and returns whether it was created. Repeating it is safe. `POST` creates a random five-letter room.
+The room collection `GET` returns room code, level, state, occupancy, capacity, and joinability without exposing player names. Level and character collections expose selection-safe metadata from the central server definitions. `PUT` canonicalizes a valid room name and returns whether it was created. Repeating it is safe. `POST` creates a random five-letter room.
 
 `GET /metrics` exposes the Checkpoint 1 observability baseline. Important series include `survive_bro_tick_duration_seconds`, `survive_bro_simulation_phase_seconds`, entity gauges, collision candidate/check/result counters, snapshot build/encode summaries, encoded-byte counters, WebSocket queue depth, dropped snapshots, and critical queue failures. The `broad_phase` phase intentionally reports zero until the spatial-hash checkpoint.
 

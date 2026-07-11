@@ -17,7 +17,7 @@ Controls:
 
 1. Set a display name, persisted on the device.
 2. Browse joinable rooms or create a generated five-letter room after selecting a level.
-3. Start immediately as Ranger. Up to five more players may join the same match.
+3. Select a character, then join immediately. Ranger is the first implemented character; up to five more players may join the same match.
 4. Survive until the level-ending event or lose when every player dies.
 5. View the shared result and return to room entry.
 
@@ -28,7 +28,7 @@ Controls:
 - The first completed WebSocket join becomes host.
 - The first player starts the match immediately; late joins are allowed while capacity remains.
 - Late joiners spawn near the map centre in the same authoritative field.
-- All players use Ranger in the current quick-play slice; Guardian and character selection remain planned.
+- Character selection is data-driven. Ranger is currently available; Guardian remains planned.
 - Host status has no gameplay effect in quick play.
 - Expire an empty lobby after 10 minutes.
 - Reset an empty active match; joining again before expiry starts a fresh match.

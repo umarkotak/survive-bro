@@ -36,6 +36,7 @@ type Envelope struct {
 
 type JoinRoomPayload struct {
 	DisplayName    string  `json:"displayName"`
+	CharacterID    string  `json:"characterId"`
 	ReconnectToken *string `json:"reconnectToken"`
 }
 
@@ -84,17 +85,28 @@ type Obstacle struct {
 }
 
 type MatchStartedPayload struct {
-	RoomName    string     `json:"roomName"`
-	MapID       string     `json:"mapId"`
-	MapWidth    float64    `json:"mapWidth"`
-	MapHeight   float64    `json:"mapHeight"`
-	StartedAtMs int64      `json:"startedAtMs"`
-	Obstacles   []Obstacle `json:"obstacles"`
+	RoomName    string        `json:"roomName"`
+	MapID       string        `json:"mapId"`
+	MapWidth    float64       `json:"mapWidth"`
+	MapHeight   float64       `json:"mapHeight"`
+	StartedAtMs int64         `json:"startedAtMs"`
+	Obstacles   []Obstacle    `json:"obstacles"`
+	DurationMs  int64         `json:"durationMs"`
+	Events      []SystemEvent `json:"events"`
+}
+
+type SystemEvent struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	AtMs        int64  `json:"atMs"`
 }
 
 type SnapshotPlayer struct {
 	ID                 string  `json:"id"`
 	DisplayName        string  `json:"displayName"`
+	CharacterID        string  `json:"characterId"`
 	X                  float64 `json:"x"`
 	Y                  float64 `json:"y"`
 	VelocityX          float64 `json:"velocityX"`

@@ -35,7 +35,7 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, enemies, and ordered timed events. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
+The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 

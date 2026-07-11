@@ -78,11 +78,15 @@ export interface MatchStartedPayload {
   mapHeight: number
   startedAtMs: number
   obstacles: ObstaclePayload[]
+  durationMs: number
+  events: SystemEventPayload[]
 }
+export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'boss' | 'end'; title: string; description: string; atMs: number }
 
 export interface SnapshotPlayer {
   id: string
   displayName: string
+  characterId: string
   x: number
   y: number
   velocityX: number
@@ -211,8 +215,9 @@ export function decodeEnvelope(data: ArrayBuffer | ArrayBufferView): Envelope {
 function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
   switch (envelope.type) {
     case 'join_room': {
-      const payload = envelope.payload as { displayName: string; reconnectToken: string | null }
+      const payload = envelope.payload as { displayName: string; characterId: string; reconnectToken: string | null }
       writer.string(payload.displayName)
+      writer.string(payload.characterId)
       writer.bool(payload.reconnectToken !== null)
       if (payload.reconnectToken !== null) writer.string(payload.reconnectToken)
       break
@@ -264,6 +269,9 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
         writer.f32(obstacle.y)
         writer.f32(obstacle.radius)
       }
+      writer.u32(payload.durationMs)
+      writer.u8(payload.events.length)
+      for (const event of payload.events) { writer.string(event.id); writer.string(event.type); writer.string(event.title); writer.string(event.description); writer.u32(event.atMs) }
       break
     }
     case 'snapshot':
@@ -325,6 +333,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   for (const player of payload.players) {
     writer.string(player.id)
     writer.string(player.displayName)
+    writer.string(player.characterId)
     writer.f32(player.x)
     writer.f32(player.y)
     writer.f32(player.velocityX)
@@ -371,8 +380,9 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
   switch (type) {
     case 'join_room': {
       const displayName = reader.string()
+      const characterId = reader.string()
       const reconnectToken = reader.bool() ? reader.string() : null
-      return { displayName, reconnectToken }
+      return { displayName, characterId, reconnectToken }
     }
     case 'leave_room':
     case 'ping':
@@ -448,7 +458,15 @@ function decodeMatchStarted(reader: BinaryReader): MatchStartedPayload {
     if (type !== 'large_rock') throw new Error(`Unknown obstacle type: ${type}`)
     obstacles.push({ id, type, x: reader.f32(), y: reader.f32(), radius: reader.f32() })
   }
-  return { roomName, mapId, mapWidth, mapHeight, startedAtMs, obstacles }
+  const durationMs = reader.u32()
+  const eventCount = reader.u8()
+  const events: SystemEventPayload[] = []
+  for (let index = 0; index < eventCount; index += 1) {
+    const id = reader.string(), type = reader.string(), title = reader.string(), description = reader.string(), atMs = reader.u32()
+    if (type !== 'spawn_rate' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
+    events.push({ id, type, title, description, atMs })
+  }
+  return { roomName, mapId, mapWidth, mapHeight, startedAtMs, obstacles, durationMs, events }
 }
 
 function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
@@ -460,6 +478,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   for (let index = 0; index < playerCount; index += 1) {
     const id = reader.string()
     const displayName = reader.string()
+    const characterId = reader.string()
     const x = reader.f32()
     const y = reader.f32()
     const velocityX = reader.f32()
@@ -472,7 +491,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     const flags = reader.u8()
     if ((flags & ~3) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
     players.push({
-      id, displayName, x, y, velocityX, velocityY, movementSpeed, armorPercent, healthRegeneration, attackBuffPercent, cooldownPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
+      id, displayName, characterId, x, y, velocityX, velocityY, movementSpeed, armorPercent, healthRegeneration, attackBuffPercent, cooldownPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
       alive: (flags & 2) !== 0, hp: reader.u16(), maxHp: reader.u16(),
       spellDamage: reader.u16(), projectileSpeed: reader.f32(), spellBurst: reader.u8(), spellDirections: reader.u8(),
       lastProcessedInput: reader.u32(), kills: reader.u32(),

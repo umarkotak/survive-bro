@@ -47,7 +47,7 @@ export class NetworkClient {
   playerId = ''
   roomName = ''
 
-  async connect(roomName: string, displayName: string, levelId?: string): Promise<JoinedPayload> {
+  async connect(roomName: string, displayName: string, levelId?: string, characterId = 'ranger'): Promise<JoinedPayload> {
     this.setConnectionState('connecting')
     const roomPath = `/api/v1/rooms/${encodeURIComponent(roomName)}`
     const roomUrl = joinNetworkUrl(networkConfig.apiBaseUrl, roomPath)
@@ -100,7 +100,7 @@ export class NetworkClient {
       }
 
       socket.addEventListener('open', () => {
-        socket.send(encodeEnvelope(createEnvelope('join_room', { displayName, reconnectToken: null }, this.nextRequestId('join'))))
+        socket.send(encodeEnvelope(createEnvelope('join_room', { displayName, characterId, reconnectToken: null }, this.nextRequestId('join'))))
       })
       socket.addEventListener('message', (event) => {
         try {

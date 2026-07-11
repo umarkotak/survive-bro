@@ -148,6 +148,9 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 		if err := e.string(value.DisplayName); err != nil {
 			return err
 		}
+		if err := e.string(value.CharacterID); err != nil {
+			return err
+		}
 		e.bool(value.ReconnectToken != nil)
 		if value.ReconnectToken != nil {
 			return e.string(*value.ReconnectToken)
@@ -251,6 +254,34 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 					return err
 				}
 			}
+		}
+		duration, err := nonNegativeUint32(value.DurationMs, "level duration ms")
+		if err != nil {
+			return err
+		}
+		e.u32(duration)
+		if len(value.Events) > math.MaxUint8 {
+			return fmt.Errorf("event count exceeds 255")
+		}
+		e.u8(uint8(len(value.Events)))
+		for _, event := range value.Events {
+			if err := e.string(event.ID); err != nil {
+				return err
+			}
+			if err := e.string(event.Type); err != nil {
+				return err
+			}
+			if err := e.string(event.Title); err != nil {
+				return err
+			}
+			if err := e.string(event.Description); err != nil {
+				return err
+			}
+			at, err := nonNegativeUint32(event.AtMs, "event at ms")
+			if err != nil {
+				return err
+			}
+			e.u32(at)
 		}
 	case TypeSnapshot:
 		value, ok := payload.(SnapshotPayload)
@@ -385,6 +416,9 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 			return err
 		}
 		if err := e.string(player.DisplayName); err != nil {
+			return err
+		}
+		if err := e.string(player.CharacterID); err != nil {
 			return err
 		}
 		for _, field := range []float64{player.X, player.Y, player.VelocityX, player.VelocityY, player.MovementSpeed, player.ArmorPercent, player.HealthRegeneration, player.AttackBuffPercent, player.CooldownPercent} {
@@ -612,6 +646,10 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		characterID, err := d.string()
+		if err != nil {
+			return nil, err
+		}
 		hasToken, err := d.bool()
 		if err != nil {
 			return nil, err
@@ -624,7 +662,7 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 			}
 			token = &value
 		}
-		return JoinRoomPayload{DisplayName: displayName, ReconnectToken: token}, nil
+		return JoinRoomPayload{DisplayName: displayName, CharacterID: characterID, ReconnectToken: token}, nil
 	case TypeLeaveRoom, TypePing, TypePong:
 		return struct{}{}, nil
 	case TypeInput:
@@ -834,7 +872,39 @@ func (d *binaryDecoder) matchStarted() (MatchStartedPayload, error) {
 		}
 		obstacles = append(obstacles, Obstacle{ID: id, Type: obstacleType, X: x, Y: y, Radius: radius})
 	}
-	return MatchStartedPayload{RoomName: roomName, MapID: mapID, MapWidth: width, MapHeight: height, StartedAtMs: startedAt, Obstacles: obstacles}, nil
+	duration, err := d.u32()
+	if err != nil {
+		return MatchStartedPayload{}, err
+	}
+	eventCount, err := d.u8()
+	if err != nil {
+		return MatchStartedPayload{}, err
+	}
+	events := make([]SystemEvent, 0, eventCount)
+	for range eventCount {
+		id, err := d.string()
+		if err != nil {
+			return MatchStartedPayload{}, err
+		}
+		eventType, err := d.string()
+		if err != nil {
+			return MatchStartedPayload{}, err
+		}
+		title, err := d.string()
+		if err != nil {
+			return MatchStartedPayload{}, err
+		}
+		description, err := d.string()
+		if err != nil {
+			return MatchStartedPayload{}, err
+		}
+		at, err := d.u32()
+		if err != nil {
+			return MatchStartedPayload{}, err
+		}
+		events = append(events, SystemEvent{ID: id, Type: eventType, Title: title, Description: description, AtMs: int64(at)})
+	}
+	return MatchStartedPayload{RoomName: roomName, MapID: mapID, MapWidth: width, MapHeight: height, StartedAtMs: startedAt, Obstacles: obstacles, DurationMs: int64(duration), Events: events}, nil
 }
 
 func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
@@ -963,6 +1033,10 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	if err != nil {
 		return SnapshotPlayer{}, err
 	}
+	characterID, err := d.string()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
 	values := make([]float64, 9)
 	for index := range values {
 		values[index], err = d.f32()
@@ -1011,7 +1085,7 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 		facing = "left"
 	}
 	return SnapshotPlayer{
-		ID: id, DisplayName: name, X: values[0], Y: values[1], VelocityX: values[2], VelocityY: values[3],
+		ID: id, DisplayName: name, CharacterID: characterID, X: values[0], Y: values[1], VelocityX: values[2], VelocityY: values[3],
 		MovementSpeed: values[4], ArmorPercent: values[5], HealthRegeneration: values[6], AttackBuffPercent: values[7], CooldownPercent: values[8],
 		SpellDamage: int(spellDamage), ProjectileSpeed: projectileSpeed, SpellBurst: int(spellBurst), SpellDirections: int(spellDirections),
 		Facing: facing, HP: int(hp), MaxHP: int(maxHP), Alive: flags&2 != 0,

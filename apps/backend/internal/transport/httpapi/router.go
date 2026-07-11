@@ -53,6 +53,7 @@ func NewRouter(cfg config.Config, rooms *room.Manager, logger *slog.Logger, read
 	app.Get("/metrics", handler.metrics)
 	app.Get("/api/v1/rooms", handler.listRooms)
 	app.Get("/api/v1/levels", handler.listLevels)
+	app.Get("/api/v1/characters", handler.listCharacters)
 	app.Post("/api/v1/rooms", handler.createRoom)
 	app.Put("/api/v1/rooms/:roomName", handler.ensureRoom)
 	app.Get("/api/v1/rooms/:roomName", handler.inspectRoom)
@@ -84,6 +85,15 @@ func (h *Handler) listLevels(c fiber.Ctx) error {
 		levels = append(levels, fiber.Map{"id": level.ID, "name": level.Name, "durationSeconds": int(level.Duration.Seconds())})
 	}
 	return c.JSON(fiber.Map{"levels": levels})
+}
+
+func (h *Handler) listCharacters(c fiber.Ctx) error {
+	items := make([]fiber.Map, 0)
+	for _, character := range simulation.AvailableCharacters() {
+		spell, _ := simulation.SpellByID(character.BaseSpellID)
+		items = append(items, fiber.Map{"id": character.ID, "name": character.Name, "spriteId": character.SpriteID, "maxHp": character.MaxHP, "armorPercent": character.ArmorPercent, "movementSpeed": character.MovementSpeed, "healthRegeneration": character.HealthRegeneration, "attackBuffPercent": character.AttackBuffPercent, "cooldownPercent": character.CooldownPercent, "baseSpell": fiber.Map{"id": spell.ID, "damage": spell.Damage, "cooldownMs": spell.Cooldown.Milliseconds(), "projectileSpeed": spell.ProjectileSpeed, "burst": spell.Burst, "directions": spell.Directions}})
+	}
+	return c.JSON(fiber.Map{"characters": items})
 }
 
 func (h *Handler) listRooms(c fiber.Ctx) error {
@@ -241,7 +251,7 @@ func (h *Handler) serveWebSocket(connection *websocket.Conn) {
 	}
 
 	outgoing := make(chan protocol.Envelope, h.cfg.WebSocketCriticalBuffer)
-	joined, err := currentRoom.Join(context.Background(), payload.DisplayName, payload.ReconnectToken, outgoing)
+	joined, err := currentRoom.JoinCharacter(context.Background(), payload.DisplayName, payload.CharacterID, payload.ReconnectToken, outgoing)
 	if err != nil {
 		code, message := joinError(err)
 		h.writeAndClose(connection, protocol.Error(first.RequestID, code, message), websocket.ClosePolicyViolation)
@@ -315,6 +325,8 @@ func joinError(err error) (string, string) {
 	switch {
 	case errors.Is(err, room.ErrInvalidDisplayName):
 		return "invalid_display_name", "display name must contain 1 to 20 characters"
+	case errors.Is(err, room.ErrInvalidCharacter):
+		return "invalid_character", "selected character does not exist"
 	case errors.Is(err, room.ErrFull):
 		return "room_full", "room is full"
 	case errors.Is(err, room.ErrReconnectNotImplemented):

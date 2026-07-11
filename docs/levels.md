@@ -12,7 +12,7 @@ Level definitions are server-owned in `apps/backend/internal/simulation/level.go
 
 Supported event types are deliberately small:
 
-- `enemy_stage`: changes the enemy used by subsequent normal spawns.
+- `spawn_rate`: replaces rate, maximum living count, and weighted normal-enemy composition independently.
 - `boss`: spawns one configured boss enemy.
 - `end`: resolves the match and score.
 
@@ -22,8 +22,8 @@ The create-room screen loads options from `GET /api/v1/levels` and sends the sel
 
 | Time | Event |
 | ---: | --- |
-| `0:00` | Spawn Slime Stage 1. |
-| `1:00` | Normal spawns switch to stronger Slime Stage 2. Existing Stage 1 enemies remain. |
+| `0:00` | `spawn_rate`: 1/sec, cap 60, 100% Slime Stage 1. |
+| `1:00` | `spawn_rate`: 1.8/sec, cap 110, 100% Slime Stage 2. Existing Stage 1 enemies remain. |
 | `5:00` | Spawn one Slime Stage 3 boss. |
 | `6:00` | End the match and show score. |
 

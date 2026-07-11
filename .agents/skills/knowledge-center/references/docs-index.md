@@ -7,6 +7,7 @@ Paths are relative to the repository root.
 | Player journey, game rules, balance baseline, limits, non-goals | `docs/mvp-spec.md` | Binding MVP specification |
 | Client/server ownership, simulation, networking, scaling boundaries | `docs/architecture.md` | Accepted architecture |
 | Level definitions, timed events, enemy stages, and extension rules | `docs/levels.md` | Implemented level framework |
+| Character, spell, enemy, level, and system-event content boundaries | `docs/content-system.md` | Implemented extension model |
 | Milestones, deliverables, tests, acceptance gates | `docs/implementation-plan.md` | Planned work; not completion evidence |
 | Backend setup, environment, routes, and current implementation status | `docs/backend.md` | Implemented backend operating reference |
 | Game setup, offline loop, client boundaries, and current implementation status | `docs/game.md` | Implemented browser-game operating reference |

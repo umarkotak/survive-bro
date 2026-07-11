@@ -187,7 +187,7 @@ func TestWebSocketJoinAndPing(t *testing.T) {
 	}
 	defer connection.Close()
 
-	join, err := protocol.NewEnvelope(protocol.TypeJoinRoom, "join-1", protocol.JoinRoomPayload{DisplayName: "Umar"})
+	join, err := protocol.NewEnvelope(protocol.TypeJoinRoom, "join-1", protocol.JoinRoomPayload{DisplayName: "Umar", CharacterID: "ranger"})
 	if err != nil {
 		t.Fatalf("join envelope: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestTwoClientsShareAuthoritativeMovement(t *testing.T) {
 		if dialErr != nil {
 			t.Fatalf("dial %s: %v", displayName, dialErr)
 		}
-		join, _ := protocol.NewEnvelope(protocol.TypeJoinRoom, "join-"+displayName, protocol.JoinRoomPayload{DisplayName: displayName})
+		join, _ := protocol.NewEnvelope(protocol.TypeJoinRoom, "join-"+displayName, protocol.JoinRoomPayload{DisplayName: displayName, CharacterID: "ranger"})
 		writeWebSocketEnvelope(t, connection, join)
 		message := readWebSocketEnvelope(t, connection)
 		var joined protocol.JoinedPayload

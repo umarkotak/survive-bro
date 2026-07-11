@@ -36,7 +36,7 @@ func TestInputGoldenFrame(t *testing.T) {
 
 func TestJoinRoomRoundTrip(t *testing.T) {
 	token := "reconnect-secret"
-	envelope, _ := NewEnvelope(TypeJoinRoom, "join-1", JoinRoomPayload{DisplayName: "Ümar", ReconnectToken: &token})
+	envelope, _ := NewEnvelope(TypeJoinRoom, "join-1", JoinRoomPayload{DisplayName: "Ümar", CharacterID: "ranger", ReconnectToken: &token})
 	encoded, err := Encode(envelope)
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
@@ -162,7 +162,7 @@ func benchmarkSnapshot() SnapshotPayload {
 	}
 	for index := range 4 {
 		snapshot.Players = append(snapshot.Players, SnapshotPlayer{
-			ID: "p_abcdefghijklmnop", DisplayName: "Player", X: 1500.25 + float64(index), Y: 900.5,
+			ID: "p_abcdefghijklmnop", DisplayName: "Player", CharacterID: "ranger", X: 1500.25 + float64(index), Y: 900.5,
 			VelocityX: 155.56, VelocityY: -155.56, MovementSpeed: 325.6, ArmorPercent: 0.6, HealthRegeneration: 2,
 			AttackBuffPercent: 0.2, CooldownPercent: 0.16, SpellDamage: 28, ProjectileSpeed: 840, SpellBurst: 2, SpellDirections: 3,
 			Facing: "right", HP: 100, MaxHP: 100,

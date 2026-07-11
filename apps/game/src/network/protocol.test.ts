@@ -14,7 +14,7 @@ describe('binary protocol v2', () => {
       tick: 42,
       serverTimeMs: 1_780_000_000_000,
       players: [{
-        id: 'p_1', displayName: 'Umar', x: 1600.25, y: 900.5, velocityX: 220, velocityY: 0,
+        id: 'p_1', displayName: 'Umar', characterId: 'ranger', x: 1600.25, y: 900.5, velocityX: 220, velocityY: 0,
         movementSpeed: 240, armorPercent: 0.125, healthRegeneration: 1, attackBuffPercent: 0.1, cooldownPercent: 0.08,
         spellDamage: 24, projectileSpeed: 770, spellBurst: 1, spellDirections: 2,
         facing: 'left', hp: 90, maxHp: 100, alive: true, lastProcessedInput: 154, kills: 2,

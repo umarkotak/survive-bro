@@ -1,4 +1,5 @@
 import type { ConnectionState } from '../network/NetworkClient'
+import type { SystemEventPayload } from '../network/protocol'
 
 export type MatchOutcome = 'playing' | 'won' | 'lost'
 
@@ -38,6 +39,18 @@ export interface GameHudState {
   connection: ConnectionState
   outcome: MatchOutcome
   score: number
+  levelDurationMs: number
+  timelineEvents: SystemEventPayload[]
+  baseMaxHp: number
+  baseArmorPercent: number
+  baseMovementSpeed: number
+  baseHealthRegeneration: number
+  baseAttackBuffPercent: number
+  baseCooldownPercent: number
+  baseSpellDamage: number
+  baseProjectileSpeed: number
+  baseSpellBurst: number
+  baseSpellDirections: number
   diagnostics: GameDiagnostics
 }
 
@@ -68,6 +81,11 @@ const initialState: GameHudState = {
   connection: 'connecting',
   outcome: 'playing',
   score: 0,
+  levelDurationMs: 6 * 60 * 1000,
+  timelineEvents: [],
+  baseMaxHp: 100, baseArmorPercent: 0, baseMovementSpeed: 220, baseHealthRegeneration: 0,
+  baseAttackBuffPercent: 0, baseCooldownPercent: 0, baseSpellDamage: 20, baseProjectileSpeed: 700,
+  baseSpellBurst: 1, baseSpellDirections: 1,
   diagnostics: {
     fps: 0,
     activeSprites: 0,

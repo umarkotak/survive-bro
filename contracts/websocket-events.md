@@ -58,7 +58,7 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 
 ## Client payloads
 
-- `join_room`: `displayName string`, `hasReconnectToken u8`, then `reconnectToken string` only when present.
+- `join_room`: `displayName string`, `characterId string`, `hasReconnectToken u8`, then `reconnectToken string` only when present.
 - `leave_room`: empty.
 - `ping`: empty; request ID is echoed by `pong`.
 - `input`: `sequence u32`, `moveX f32`, `moveY f32`.
@@ -69,7 +69,7 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 
 - `joined`: `playerId string`, `reconnectToken string`, `roomName string`, `host u8`.
 - `room_state`: `status u8`, `hostPlayerId string`, `playerCount u8`, then players. Each player is `id string`, `displayName string`, `characterId string`, `flags u8` (`bit0 ready`, `bit1 connected`). Status enum: `0 lobby`, `1 running`, `2 finished`.
-- `match_started`: `roomName string`, `mapId string`, `mapWidth f32`, `mapHeight f32`, `startedAtMs i64`, `obstacleCount u16`, then obstacles. Each obstacle is `id string`, `type string`, `x f32`, `y f32`, `radius f32`.
+- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`.
 - `snapshot`: header/team fields and entity arrays described below.
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
 - `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`.
@@ -88,6 +88,7 @@ playerCount u8
   repeated player:
     id string
     displayName string
+    characterId string
     x f32, y f32
     velocityX f32, velocityY f32
     movementSpeed f32

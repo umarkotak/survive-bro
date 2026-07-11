@@ -36,6 +36,7 @@ interface PlayerView {
   walkFrame: number
   walkElapsed: number
   attackUntil: number
+  characterId: string
 }
 
 interface MonsterView {
@@ -70,12 +71,7 @@ const rangerDisplaySize = 132
 const rockDisplaySize = 180
 const walkFrameDurationMs = 160
 const attackFrameDurationMs = 140
-const rangerWalkTextures = [
-  'character-ranger-walk-1',
-  'character-ranger-walk-2',
-  'character-ranger-walk-3',
-  'character-ranger-walk-2',
-] as const
+const walkFrames = [1, 2, 3, 2] as const
 
 export class GameScene extends Phaser.Scene {
   private readonly session: MultiplayerSession
@@ -192,7 +188,7 @@ export class GameScene extends Phaser.Scene {
           .setData('obstacle-id', obstacle.id),
       )
     }
-    this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing' })
+    this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing', levelDurationMs: payload.durationMs, timelineEvents: payload.events })
   }
 
   private handleRoomState(payload: RoomStatePayload): void {
@@ -324,21 +320,21 @@ export class GameScene extends Phaser.Scene {
   private updatePlayerAnimations(time: number, delta: number): void {
     for (const view of this.players.values()) {
       if (time < view.attackUntil) {
-        view.sprite.setTexture('character-ranger-attack-1')
+        view.sprite.setTexture(`character-${view.characterId}-attack-1`)
         continue
       }
       if (!view.moving) {
         view.walkFrame = 0
         view.walkElapsed = 0
-        view.sprite.setTexture('character-ranger-idle')
+        view.sprite.setTexture(`character-${view.characterId}-idle`)
         continue
       }
       view.walkElapsed += delta
       while (view.walkElapsed >= walkFrameDurationMs) {
         view.walkElapsed -= walkFrameDurationMs
-        view.walkFrame = (view.walkFrame + 1) % rangerWalkTextures.length
+        view.walkFrame = (view.walkFrame + 1) % walkFrames.length
       }
-      view.sprite.setTexture(rangerWalkTextures[view.walkFrame])
+      view.sprite.setTexture(`character-${view.characterId}-walk-${walkFrames[view.walkFrame]}`)
     }
   }
 
@@ -456,7 +452,7 @@ export class GameScene extends Phaser.Scene {
     const isLocal = player.id === this.session.network.playerId
     const color = playerColor(player.id)
     const shadow = this.add.image(player.x, player.y + 48, 'entity-shadow').setDisplaySize(94, 38)
-    const sprite = this.add.image(player.x, player.y, 'character-ranger-idle').setDisplaySize(rangerDisplaySize, rangerDisplaySize)
+    const sprite = this.add.image(player.x, player.y, `character-${player.characterId}-idle`).setDisplaySize(rangerDisplaySize, rangerDisplaySize)
     if (!isLocal) sprite.setTint(color)
     const name = this.add.text(player.x, player.y - 60, player.displayName, {
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -481,6 +477,7 @@ export class GameScene extends Phaser.Scene {
       walkFrame: 0,
       walkElapsed: 0,
       attackUntil: 0,
+      characterId: player.characterId,
     }
     this.players.set(player.id, view)
     return view
