@@ -198,4 +198,4 @@ Gate: `go test -race ./...`, frontend checks, integration tests, browser flow, a
 
 ## Definition of done
 
-The MVP is done only when 1–4 players can create/join a private named room, select either character, play one synchronized authoritative five-minute match with rocks, monsters, distinct attacks, XP, upgrades, death/spectating, shared results, rematch, and 15-second reconnect—without Redis or PostgreSQL—and the verification gates above pass. The quick-play slice deliberately skips ready/countdown for faster entry.
+The MVP is done only when 1–6 players can browse/create/join a room, select either character, play one synchronized authoritative five-minute match with rocks, monsters, distinct attacks, shared XP, individual attributes, death/spectating, shared results, rematch, and 15-second reconnect—without Redis or PostgreSQL—and the verification gates above pass. The quick-play slice deliberately skips ready/countdown for faster entry.

@@ -13,6 +13,7 @@ export type MessageType =
   | 'projectile_removed'
   | 'match_ended'
   | 'pong'
+  | 'upgrade_applied'
   | 'error'
   | 'server_shutdown'
 
@@ -29,6 +30,7 @@ const typeToId: Record<MessageType, number> = {
   projectile_removed: 69,
   match_ended: 70,
   pong: 71,
+  upgrade_applied: 76,
   error: 126,
   server_shutdown: 127,
 }
@@ -87,6 +89,13 @@ export interface SnapshotPlayer {
   velocityY: number
   movementSpeed: number
   armorPercent: number
+  healthRegeneration: number
+  attackBuffPercent: number
+  cooldownPercent: number
+  spellDamage: number
+  projectileSpeed: number
+  spellBurst: number
+  spellDirections: number
   facing: 'left' | 'right'
   hp: number
   maxHp: number
@@ -97,6 +106,7 @@ export interface SnapshotPlayer {
 
 export interface SnapshotMonster {
   id: number
+  typeId: 'slime-stage-1' | 'slime-stage-2' | 'slime-stage-3'
   x: number
   y: number
   hp: number
@@ -121,8 +131,6 @@ export interface SnapshotPayload {
     experience: number
     experienceRequired: number
     totalKills: number
-    projectileCount: number
-    pickupRadius: number
   }
   remainingMs: number
 }
@@ -148,11 +156,22 @@ export interface MatchEndedPayload {
   survivalMs: number
   teamLevel: number
   totalKills: number
+  score: number
 }
 
 export interface ErrorPayload {
   code: string
   message: string
+}
+
+export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions'
+export interface UpgradeAppliedPayload {
+  playerId: string
+  source: 'level_up' | 'treasure_chest'
+  attribute: UpgradeAttribute
+  baseValue: number
+  addedValue: number
+  finalValue: number
 }
 
 export function createEnvelope<T>(type: MessageType, payload: T, requestId?: string): Envelope<T> {
@@ -274,6 +293,17 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
       writer.u32(payload.survivalMs)
       writer.u16(payload.teamLevel)
       writer.u32(payload.totalKills)
+      writer.u32(payload.score)
+      break
+    }
+    case 'upgrade_applied': {
+      const payload = envelope.payload as UpgradeAppliedPayload
+      writer.string(payload.playerId)
+      writer.u8(payload.source === 'level_up' ? 0 : 1)
+      writer.string(payload.attribute)
+      writer.f32(payload.baseValue)
+      writer.f32(payload.addedValue)
+      writer.f32(payload.finalValue)
       break
     }
     case 'error': {
@@ -301,9 +331,16 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.f32(player.velocityY)
     writer.f32(player.movementSpeed)
     writer.f32(player.armorPercent)
+    writer.f32(player.healthRegeneration)
+    writer.f32(player.attackBuffPercent)
+    writer.f32(player.cooldownPercent)
     writer.u8(Number(player.facing === 'left') | (Number(player.alive) << 1))
     writer.u16(player.hp)
     writer.u16(player.maxHp)
+    writer.u16(player.spellDamage)
+    writer.f32(player.projectileSpeed)
+    writer.u8(player.spellBurst)
+    writer.u8(player.spellDirections)
     writer.u32(player.lastProcessedInput)
     writer.u32(player.kills)
   }
@@ -312,6 +349,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.u32(monster.id)
     writer.f32(monster.x)
     writer.f32(monster.y)
+    writer.string(monster.typeId)
     writer.u16(monster.hp)
     writer.u16(monster.maxHp)
   }
@@ -326,8 +364,6 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   writer.u16(payload.team.experience)
   writer.u16(payload.team.experienceRequired)
   writer.u32(payload.team.totalKills)
-  writer.u8(payload.team.projectileCount)
-  writer.f32(payload.team.pickupRadius)
   writer.u32(payload.remainingMs)
 }
 
@@ -361,8 +397,16 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
       return { projectileId: reader.u32(), reason: decodeRemovalReason(reader.u8()) } satisfies ProjectileRemovedPayload
     case 'match_ended':
       return {
-        outcome: decodeOutcome(reader.u8()), survivalMs: reader.u32(), teamLevel: reader.u16(), totalKills: reader.u32(),
+        outcome: decodeOutcome(reader.u8()), survivalMs: reader.u32(), teamLevel: reader.u16(), totalKills: reader.u32(), score: reader.u32(),
       } satisfies MatchEndedPayload
+    case 'upgrade_applied': {
+      const playerId = reader.string()
+      const sourceId = reader.u8()
+      if (sourceId > 1) throw new Error(`Unknown upgrade source: ${sourceId}`)
+      const attribute = reader.string()
+      if (!upgradeAttributes.has(attribute as UpgradeAttribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
+      return { playerId, source: sourceId === 0 ? 'level_up' : 'treasure_chest', attribute: attribute as UpgradeAttribute, baseValue: reader.f32(), addedValue: reader.f32(), finalValue: reader.f32() } satisfies UpgradeAppliedPayload
+    }
     case 'error':
       return { code: reader.string(), message: reader.string() } satisfies ErrorPayload
     case 'server_shutdown':
@@ -370,11 +414,13 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
   }
 }
 
+const upgradeAttributes = new Set<UpgradeAttribute>(['max_health', 'armor', 'movement_speed', 'health_regeneration', 'attack_buff', 'cooldown', 'spell_damage', 'projectile_speed', 'spell_burst', 'spell_directions'])
+
 function decodeRoomState(reader: BinaryReader): RoomStatePayload {
   const status = decodeRoomStatus(reader.u8())
   const hostPlayerId = reader.string()
   const playerCount = reader.u8()
-  if (playerCount > 4) throw new Error(`Player count exceeds limit: ${playerCount}`)
+  if (playerCount > 6) throw new Error(`Player count exceeds limit: ${playerCount}`)
   const players: RoomStatePayload['players'] = []
   for (let index = 0; index < playerCount; index += 1) {
     const id = reader.string()
@@ -409,7 +455,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   const tick = reader.u32()
   const serverTimeMs = reader.i64()
   const playerCount = reader.u8()
-  if (playerCount > 4) throw new Error(`Player count exceeds limit: ${playerCount}`)
+  if (playerCount > 6) throw new Error(`Player count exceeds limit: ${playerCount}`)
   const players: SnapshotPlayer[] = []
   for (let index = 0; index < playerCount; index += 1) {
     const id = reader.string()
@@ -420,11 +466,15 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     const velocityY = reader.f32()
     const movementSpeed = reader.f32()
     const armorPercent = reader.f32()
+    const healthRegeneration = reader.f32()
+    const attackBuffPercent = reader.f32()
+    const cooldownPercent = reader.f32()
     const flags = reader.u8()
     if ((flags & ~3) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
     players.push({
-      id, displayName, x, y, velocityX, velocityY, movementSpeed, armorPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
+      id, displayName, x, y, velocityX, velocityY, movementSpeed, armorPercent, healthRegeneration, attackBuffPercent, cooldownPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
       alive: (flags & 2) !== 0, hp: reader.u16(), maxHp: reader.u16(),
+      spellDamage: reader.u16(), projectileSpeed: reader.f32(), spellBurst: reader.u8(), spellDirections: reader.u8(),
       lastProcessedInput: reader.u32(), kills: reader.u32(),
     })
   }
@@ -432,7 +482,9 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   if (monsterCount > 1024) throw new Error(`Monster count exceeds limit: ${monsterCount}`)
   const monsters: SnapshotMonster[] = []
   for (let index = 0; index < monsterCount; index += 1) {
-    monsters.push({ id: reader.u32(), x: reader.f32(), y: reader.f32(), hp: reader.u16(), maxHp: reader.u16() })
+    const id = reader.u32(), x = reader.f32(), y = reader.f32(), typeId = reader.string()
+    if (typeId !== 'slime-stage-1' && typeId !== 'slime-stage-2' && typeId !== 'slime-stage-3') throw new Error(`Unknown monster type: ${typeId}`)
+    monsters.push({ id, x, y, typeId, hp: reader.u16(), maxHp: reader.u16() })
   }
   const pickupCount = reader.u16()
   if (pickupCount > 2048) throw new Error(`Pickup count exceeds limit: ${pickupCount}`)
@@ -448,7 +500,6 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     pickups,
     team: {
       level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(),
-      projectileCount: reader.u8(), pickupRadius: reader.f32(),
     },
     remainingMs: reader.u32(),
   }

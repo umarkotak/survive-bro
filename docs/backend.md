@@ -10,10 +10,10 @@ The backend foundation and initial room transport are implemented in `apps/backe
 - Official Fiber v3 WebSocket adapter.
 - Structured `slog` startup and request logs.
 - Live/readiness health and Prometheus text metrics for tick/phase duration, entities, collision work, snapshots, encoded bytes, and WebSocket queues.
-- Idempotent named-room creation/lookup and inspection.
+- Public room listing plus idempotent named-room creation/lookup and inspection.
 - One actor goroutine per room.
 - Binary protocol-v2 WebSocket join, identity, ping/pong, input, snapshots, bounded writer queues, origin allowlist, and join/message limits.
-- Authoritative 20 Hz movement, enemies, Ranger multishot projectiles, armor-reduced damage, magnetized XP, bounded power-crate effects, match timer, and 10 Hz snapshots. Newly spawned Arc Bolts gain `70` speed per level and trajectory count progresses from one to four.
+- Authoritative 20 Hz movement, data-driven levels and timed events, per-player Fireball attributes, armor-reduced damage, regeneration, shared XP, individual random level/chest upgrades, score, and 10 Hz snapshots.
 - Late joins into one shared battlefield, with a real two-client integration test.
 - Graceful readiness, room notification, and HTTP shutdown.
 
@@ -66,13 +66,15 @@ For Cloudflare Tunnel, publish the API hostname as an HTTP service pointing to `
 GET  /health/live
 GET  /health/ready
 GET  /metrics
+GET  /api/v1/rooms
+GET  /api/v1/levels
 POST /api/v1/rooms
 PUT  /api/v1/rooms/{roomName}
 GET  /api/v1/rooms/{roomName}
 GET  /ws/v2/rooms/{roomName}
 ```
 
-`PUT` canonicalizes a valid room name and returns whether it was created. Repeating it is safe. The legacy random-room `POST` remains available; inspecting a room never exposes player names.
+The room collection `GET` returns room code, level, state, occupancy, capacity, and joinability without exposing player names. The level collection exposes selectable level IDs, names, and durations from the server definitions. `PUT` canonicalizes a valid room name and returns whether it was created. Repeating it is safe. `POST` creates a random five-letter room.
 
 `GET /metrics` exposes the Checkpoint 1 observability baseline. Important series include `survive_bro_tick_duration_seconds`, `survive_bro_simulation_phase_seconds`, entity gauges, collision candidate/check/result counters, snapshot build/encode summaries, encoded-byte counters, WebSocket queue depth, dropped snapshots, and critical queue failures. The `broad_phase` phase intentionally reports zero until the spatial-hash checkpoint.
 
@@ -87,4 +89,4 @@ WebSocket v2 uses the schema in `contracts/websocket-events.md`; it never marsha
 | Binary v2 decode | `3262` | `2.34–2.43 µs/op` | `12` (`8160 B/op`) |
 | Sonic JSON decode | `9137` | `20.12–20.66 µs/op` | `10` (`~18.5 KiB/op`) |
 
-This benchmark predates the added resolved movement, armor, pickup-kind, projectile-count, and magnet-radius snapshot fields. It remains historical codec evidence, not a current payload measurement or server-capacity claim; rerun only when verification is explicitly requested.
+This benchmark predates the current six-player limit and individual player/spell attribute snapshot fields. It remains historical codec evidence, not a current payload measurement or server-capacity claim; rerun only when verification is explicitly requested.

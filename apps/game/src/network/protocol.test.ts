@@ -15,12 +15,13 @@ describe('binary protocol v2', () => {
       serverTimeMs: 1_780_000_000_000,
       players: [{
         id: 'p_1', displayName: 'Umar', x: 1600.25, y: 900.5, velocityX: 220, velocityY: 0,
-        movementSpeed: 240, armorPercent: 0.125,
+        movementSpeed: 240, armorPercent: 0.125, healthRegeneration: 1, attackBuffPercent: 0.1, cooldownPercent: 0.08,
+        spellDamage: 24, projectileSpeed: 770, spellBurst: 1, spellDirections: 2,
         facing: 'left', hp: 90, maxHp: 100, alive: true, lastProcessedInput: 154, kills: 2,
       }],
-      monsters: [{ id: 7, x: 2100, y: 840, hp: 20, maxHp: 40 }],
+      monsters: [{ id: 7, typeId: 'slime-stage-1', x: 2100, y: 840, hp: 20, maxHp: 40 }],
       pickups: [{ id: 4, kind: 'experience', x: 2020, y: 810 }],
-      team: { level: 2, experience: 3, experienceRequired: 22, totalKills: 4, projectileCount: 2, pickupRadius: 144 },
+      team: { level: 2, experience: 3, experienceRequired: 22, totalKills: 4 },
       remainingMs: 286_400,
     }
     const decoded = decodeEnvelope(encodeEnvelope(createEnvelope('snapshot', payload)))

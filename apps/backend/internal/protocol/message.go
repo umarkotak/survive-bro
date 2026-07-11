@@ -22,6 +22,7 @@ const (
 	TypeProjectileRemoved MessageType = 69
 	TypeMatchEnded        MessageType = 70
 	TypePong              MessageType = 71
+	TypeUpgradeApplied    MessageType = 76
 	TypeError             MessageType = 126
 	TypeServerClosed      MessageType = 127
 )
@@ -100,6 +101,13 @@ type SnapshotPlayer struct {
 	VelocityY          float64 `json:"velocityY"`
 	MovementSpeed      float64 `json:"movementSpeed"`
 	ArmorPercent       float64 `json:"armorPercent"`
+	HealthRegeneration float64 `json:"healthRegeneration"`
+	AttackBuffPercent  float64 `json:"attackBuffPercent"`
+	CooldownPercent    float64 `json:"cooldownPercent"`
+	SpellDamage        int     `json:"spellDamage"`
+	ProjectileSpeed    float64 `json:"projectileSpeed"`
+	SpellBurst         int     `json:"spellBurst"`
+	SpellDirections    int     `json:"spellDirections"`
 	Facing             string  `json:"facing"`
 	HP                 int     `json:"hp"`
 	MaxHP              int     `json:"maxHp"`
@@ -109,11 +117,12 @@ type SnapshotPlayer struct {
 }
 
 type SnapshotMonster struct {
-	ID    uint64  `json:"id"`
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	HP    int     `json:"hp"`
-	MaxHP int     `json:"maxHp"`
+	ID     uint64  `json:"id"`
+	TypeID string  `json:"typeId"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	HP     int     `json:"hp"`
+	MaxHP  int     `json:"maxHp"`
 }
 
 type SnapshotPickup struct {
@@ -128,8 +137,8 @@ type SnapshotTeam struct {
 	Experience         int     `json:"experience"`
 	ExperienceRequired int     `json:"experienceRequired"`
 	TotalKills         int     `json:"totalKills"`
-	ProjectileCount    int     `json:"projectileCount"`
-	PickupRadius       float64 `json:"pickupRadius"`
+	ProjectileCount    int     `json:"projectileCount,omitempty"`
+	PickupRadius       float64 `json:"pickupRadius,omitempty"`
 }
 
 type SnapshotPayload struct {
@@ -163,6 +172,16 @@ type MatchEndedPayload struct {
 	SurvivalMs int64  `json:"survivalMs"`
 	TeamLevel  int    `json:"teamLevel"`
 	TotalKills int    `json:"totalKills"`
+	Score      int    `json:"score"`
+}
+
+type UpgradeAppliedPayload struct {
+	PlayerID   string  `json:"playerId"`
+	Source     string  `json:"source"`
+	Attribute  string  `json:"attribute"`
+	BaseValue  float64 `json:"baseValue"`
+	AddedValue float64 `json:"addedValue"`
+	FinalValue float64 `json:"finalValue"`
 }
 
 func NewEnvelope(messageType MessageType, requestID string, payload any) (Envelope, error) {
@@ -200,7 +219,7 @@ func (t MessageType) valid() bool {
 	switch t {
 	case TypeJoinRoom, TypeLeaveRoom, TypePing, TypeInput, TypeJoined, TypeRoomState,
 		TypeMatchStarted, TypeSnapshot, TypeProjectileSpawned, TypeProjectileRemoved,
-		TypeMatchEnded, TypePong, TypeError, TypeServerClosed:
+		TypeMatchEnded, TypePong, TypeUpgradeApplied, TypeError, TypeServerClosed:
 		return true
 	default:
 		return false

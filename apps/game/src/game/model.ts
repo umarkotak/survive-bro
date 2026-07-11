@@ -1,6 +1,6 @@
 export const WORLD_WIDTH = 3200
 export const WORLD_HEIGHT = 1800
-export const MATCH_DURATION_MS = 5 * 60 * 1000
+export const MATCH_DURATION_MS = 6 * 60 * 1000
 
 export interface DifficultyStep {
   spawnRate: number

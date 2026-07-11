@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 
+import { gameAudio } from '../../audio/gameAudio'
 import { diagnosticsEnabled } from '../../config/diagnostics'
 import type { MultiplayerSession } from '../../network/MultiplayerSession'
 import type {
@@ -14,7 +15,7 @@ import type {
   SnapshotPickup,
   SnapshotPlayer,
 } from '../../network/protocol'
-import { RANGER } from '../content'
+import { RANGER, SLIME_STAGES } from '../content'
 import { normalizeMovement, resolveCircleOverlap, teammateEdgeIndicator } from '../model'
 
 interface IndicatorView {
@@ -31,6 +32,10 @@ interface PlayerView {
   targetY: number
   alive: boolean
   movementSpeed: number
+  moving: boolean
+  walkFrame: number
+  walkElapsed: number
+  attackUntil: number
 }
 
 interface MonsterView {
@@ -39,6 +44,8 @@ interface MonsterView {
   targetX: number
   targetY: number
   hp: number
+  typeId: SnapshotMonster['typeId']
+  shadowOffset: number
 }
 
 interface ProjectileView {
@@ -58,6 +65,17 @@ interface PickupAbsorption {
   sprite: Phaser.GameObjects.Image
   elapsed: number
 }
+
+const rangerDisplaySize = 132
+const rockDisplaySize = 180
+const walkFrameDurationMs = 160
+const attackFrameDurationMs = 140
+const rangerWalkTextures = [
+  'character-ranger-walk-1',
+  'character-ranger-walk-2',
+  'character-ranger-walk-3',
+  'character-ranger-walk-2',
+] as const
 
 export class GameScene extends Phaser.Scene {
   private readonly session: MultiplayerSession
@@ -80,6 +98,7 @@ export class GameScene extends Phaser.Scene {
   private unsubscribeDiagnostics: (() => void) | null = null
   private diagnosticsElapsed = 0
   private smoothedFps = 0
+  private lastLocalHP: number | null = null
 
   constructor(session: MultiplayerSession) {
     super('GameScene')
@@ -87,7 +106,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.add.tileSprite(1600, 900, 3200, 1800, 'meadow-ground').setDepth(-20)
+    this.createTerrain()
     this.cameras.main.setBounds(0, 0, 3200, 1800)
 
     if (this.input.keyboard) {
@@ -109,6 +128,7 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     const seconds = Math.min(delta, 50) / 1000
     this.updateLocalInput(time, seconds)
+    this.updatePlayerAnimations(time, delta)
     this.interpolatePlayers(seconds)
     this.interpolateMonsters(seconds)
     this.interpolatePickups(time, seconds)
@@ -163,7 +183,14 @@ export class GameScene extends Phaser.Scene {
     this.obstacles = payload.obstacles
     this.cameras.main.setBounds(0, 0, payload.mapWidth, payload.mapHeight)
     for (const obstacle of payload.obstacles) {
-      this.obstacleSprites.push(this.add.image(obstacle.x, obstacle.y, 'large-rock').setDepth(obstacle.y).setData('obstacle-id', obstacle.id))
+      const number = Number(obstacle.id.split('-').at(-1)) || 1
+      const variant = ((number - 1) % 3) + 1
+      this.obstacleSprites.push(
+        this.add.image(obstacle.x, obstacle.y, `obstacle-large-rock-${variant}`)
+          .setDisplaySize(rockDisplaySize, rockDisplaySize)
+          .setDepth(obstacle.y)
+          .setData('obstacle-id', obstacle.id),
+      )
     }
     this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing' })
   }
@@ -184,6 +211,7 @@ export class GameScene extends Phaser.Scene {
       view.targetX = player.x
       view.targetY = player.y
       view.movementSpeed = player.movementSpeed
+      view.moving = Math.hypot(player.velocityX, player.velocityY) > 1
 
       if (player.id === localPlayerId) {
         const error = Phaser.Math.Distance.Between(view.sprite.x, view.sprite.y, player.x, player.y)
@@ -204,6 +232,8 @@ export class GameScene extends Phaser.Scene {
 
     const local = snapshot.players.find((player) => player.id === localPlayerId)
     if (local) {
+      if (this.lastLocalHP !== null && local.hp < this.lastLocalHP) gameAudio.damage()
+      this.lastLocalHP = local.hp
       this.session.bridge.patch({
         hp: local.hp,
         maxHp: local.maxHp,
@@ -214,11 +244,23 @@ export class GameScene extends Phaser.Scene {
         kills: snapshot.team.totalKills,
         enemies: snapshot.monsters.length,
         playerCount: snapshot.players.length,
+        armorPercent: local.armorPercent,
+        movementSpeed: local.movementSpeed,
+        healthRegeneration: local.healthRegeneration,
+        attackBuffPercent: local.attackBuffPercent,
+        cooldownPercent: local.cooldownPercent,
+        spellDamage: local.spellDamage,
+        projectileSpeed: local.projectileSpeed,
+        spellBurst: local.spellBurst,
+        spellDirections: local.spellDirections,
       })
     }
   }
 
   private handleProjectileSpawned(payload: ProjectileSpawnedPayload): void {
+    const owner = this.players.get(payload.ownerId)
+    if (owner) owner.attackUntil = this.time.now + attackFrameDurationMs
+    if (payload.ownerId === this.session.network.playerId) gameAudio.fireball()
     const angle = Math.atan2(payload.velocityY, payload.velocityX)
     const sprite = this.add.image(payload.x, payload.y, 'arc-bolt').setRotation(angle).setDepth(payload.y + 2)
     this.projectiles.set(payload.projectileId, { sprite, velocityX: payload.velocityX, velocityY: payload.velocityY })
@@ -229,7 +271,8 @@ export class GameScene extends Phaser.Scene {
       outcome: payload.outcome,
       level: payload.teamLevel,
       kills: payload.totalKills,
-      remainingMs: Math.max(0, 5 * 60 * 1000 - payload.survivalMs),
+      remainingMs: Math.max(0, 6 * 60 * 1000 - payload.survivalMs),
+      score: payload.score,
     })
   }
 
@@ -241,6 +284,7 @@ export class GameScene extends Phaser.Scene {
     const vertical = Number(this.cursors?.down.isDown || this.keys?.S.isDown) - Number(this.cursors?.up.isDown || this.keys?.W.isDown)
     const virtual = this.session.bridge.getVirtualMovement()
     const movement = normalizeMovement(horizontal + virtual.x, vertical + virtual.y)
+    local.moving = movement.x !== 0 || movement.y !== 0
     const changed = movement.x !== this.lastMoveX || movement.y !== this.lastMoveY
 
     if (changed || time-this.lastInputSentAt >= 50) {
@@ -272,8 +316,29 @@ export class GameScene extends Phaser.Scene {
         )
       }
       view.sprite.setDepth(view.sprite.y)
-      view.shadow.setPosition(view.sprite.x, view.sprite.y + 35).setDepth(view.sprite.y - 1)
+      view.shadow.setPosition(view.sprite.x, view.sprite.y + 48).setDepth(view.sprite.y - 1)
       view.name.setPosition(view.sprite.x, view.sprite.y - 60).setDepth(view.sprite.y + 1)
+    }
+  }
+
+  private updatePlayerAnimations(time: number, delta: number): void {
+    for (const view of this.players.values()) {
+      if (time < view.attackUntil) {
+        view.sprite.setTexture('character-ranger-attack-1')
+        continue
+      }
+      if (!view.moving) {
+        view.walkFrame = 0
+        view.walkElapsed = 0
+        view.sprite.setTexture('character-ranger-idle')
+        continue
+      }
+      view.walkElapsed += delta
+      while (view.walkElapsed >= walkFrameDurationMs) {
+        view.walkElapsed -= walkFrameDurationMs
+        view.walkFrame = (view.walkFrame + 1) % rangerWalkTextures.length
+      }
+      view.sprite.setTexture(rangerWalkTextures[view.walkFrame])
     }
   }
 
@@ -287,7 +352,7 @@ export class GameScene extends Phaser.Scene {
       )
       if (view.sprite.x !== previousX) view.sprite.setFlipX(view.sprite.x < previousX)
       view.sprite.setDepth(view.sprite.y)
-      view.shadow.setPosition(view.sprite.x, view.sprite.y + 25).setDepth(view.sprite.y - 1)
+      view.shadow.setPosition(view.sprite.x, view.sprite.y + view.shadowOffset).setDepth(view.sprite.y - 1)
     }
   }
 
@@ -390,8 +455,8 @@ export class GameScene extends Phaser.Scene {
 
     const isLocal = player.id === this.session.network.playerId
     const color = playerColor(player.id)
-    const shadow = this.add.image(player.x, player.y + 35, 'entity-shadow').setDisplaySize(94, 38)
-    const sprite = this.add.image(player.x, player.y, 'ranger')
+    const shadow = this.add.image(player.x, player.y + 48, 'entity-shadow').setDisplaySize(94, 38)
+    const sprite = this.add.image(player.x, player.y, 'character-ranger-idle').setDisplaySize(rangerDisplaySize, rangerDisplaySize)
     if (!isLocal) sprite.setTint(color)
     const name = this.add.text(player.x, player.y - 60, player.displayName, {
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -412,6 +477,10 @@ export class GameScene extends Phaser.Scene {
       targetY: player.y,
       alive: player.alive,
       movementSpeed: player.movementSpeed,
+      moving: Math.hypot(player.velocityX, player.velocityY) > 1,
+      walkFrame: 0,
+      walkElapsed: 0,
+      attackUntil: 0,
     }
     this.players.set(player.id, view)
     return view
@@ -435,12 +504,16 @@ export class GameScene extends Phaser.Scene {
     for (const monster of monsters) {
       let view = this.monsters.get(monster.id)
       if (!view) {
+        const content = SLIME_STAGES[monster.typeId]
+        const displaySize = content.displaySize
         view = {
-          shadow: this.add.image(monster.x, monster.y + 25, 'entity-shadow').setDisplaySize(66, 26),
-          sprite: this.add.image(monster.x, monster.y, 'crawler'),
+          shadow: this.add.image(monster.x, monster.y + displaySize * 0.3, 'entity-shadow').setDisplaySize(displaySize * 0.72, displaySize * 0.26),
+          sprite: this.add.image(monster.x, monster.y, content.texture).setDisplaySize(displaySize, displaySize),
           targetX: monster.x,
           targetY: monster.y,
           hp: monster.hp,
+          typeId: monster.typeId,
+          shadowOffset: displaySize * 0.3,
         }
         this.monsters.set(monster.id, view)
       }
@@ -510,6 +583,7 @@ export class GameScene extends Phaser.Scene {
 
   private cleanup(): void {
     this.session.bridge.setVirtualMovement(0, 0)
+    this.lastLocalHP = null
     for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
     this.pickupAbsorptions.length = 0
     this.unsubscribeNetwork?.()
@@ -518,6 +592,22 @@ export class GameScene extends Phaser.Scene {
     this.unsubscribeNetwork = null
     this.unsubscribeConnection = null
     this.unsubscribeDiagnostics = null
+  }
+
+  private createTerrain(): void {
+    const tileSize = 256
+    const columns = Math.ceil(3200 / tileSize)
+    const rows = Math.ceil(1800 / tileSize)
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const variant = ((column * 7 + row * 11) % 3) + 1
+        this.add.image(
+          column * tileSize + tileSize / 2,
+          row * tileSize + tileSize / 2,
+          `terrain-variant-${variant}`,
+        ).setDepth(-20)
+      }
+    }
   }
 }
 

@@ -6,16 +6,18 @@
 
 - React 19.2.7, TypeScript 7.0.2, Vite 8.1.4, and Phaser exactly `4.2.1`.
 - Node 24 declarations through `.node-version`, `.nvmrc`, and package engines.
-- Name and room entry before play; room ensure creates or joins the canonical named room.
+- Local-storage username setup followed by a live room browser, join actions, and a generated five-letter create-room modal.
 - One `MultiplayerSession`, WebSocket, and `GameCanvas` per gameplay entry with complete cleanup on leave.
 - Dependency-free binary WebSocket v2 codec using `ArrayBuffer` and `DataView`; realtime messages never pass through JSON.
-- Responsive Meadow arena at 3200 x 1800 world units rendering authoritative players, Crawlers, pickups, projectiles, and results.
+- Responsive Meadow arena at 3200 x 1800 world units rendering authoritative players, three Slime stages, pickups, projectiles, and scored results.
 - Local Ranger movement prediction/reconciliation and remote-player interpolation.
 - Responsive virtual joystick movement on touch/mobile layouts; portrait phones place it at the bottom center for easier reach, while landscape keeps it bottom-left. Keyboard controls remain available.
 - Camera-edge teammate badges/arrows for players outside the viewport.
-- One consistent desktop/mobile HUD layer above Phaser: a 10-pixel full-width XP bar at the absolute top edge, health and level at top-left, and a top-right menu button opening a modal with the leave action.
-- Levels 1–4 render 1–4 authoritative Arc Bolt trajectories, capped at four. Level and power-crate movement stats come from snapshots so local prediction uses the same resolved speed as the server.
-- XP crystals interpolate along the server-owned magnet pull toward a nearby player. Gold power crates render as distinct pickups and grant bounded haste, armor, or magnet effects.
+- One consistent desktop/mobile HUD layer above Phaser: a 10-pixel full-width XP bar, health and level at top-left with a clickable `YOU` Ranger portrait, and a top-right room menu. The portrait opens separate character and Fireball statistic sections; the room menu owns the leave action.
+- Shared level progression applies an independent random personal upgrade to every player. Chest collection upgrades only the collector. The menu displays current player and Fireball attributes.
+- The character-stat view formats each upgradable value as `base (+current bonus) final`. Authoritative level/chest events drive a top-centre toast and a current-run history modal; this history is client-local and clears when leaving the room.
+- A dependency-free Web Audio layer generates short, low-volume Fireball, player-damage, level-up, and treasure sounds. Audio unlocks on the first pointer or keyboard interaction so it follows browser autoplay rules; gameplay remains functional when audio is unavailable.
+- XP crystals interpolate along the server-owned magnet pull toward a nearby player. Fireball burst and direction upgrades combine into the authoritative volley.
 - React HUD updates through `GameBridge` at no more than 10 Hz; React does not render world entities or update every frame.
 - Optional Checkpoint 1 diagnostics at `?debug=1` show smoothed FPS, visible/active gameplay sprites, active projectiles, snapshot interval, binary decode time, heartbeat RTT, and latest frame bytes. The overlay and its Phaser counters stay disabled without that query parameter.
 
@@ -23,7 +25,11 @@ The Go server owns movement, enemies, projectiles, damage, XP, and match outcome
 
 ## Development art
 
-The current scene generates compact textures in `BootScene` so the loop is playable without blocking on asset production. These are placeholders, not the final asset pack. Production images still follow the dimensions and art rules from the MVP source document.
+`BootScene` loads the supplied production terrain variants, Ranger frames, rock variants, and all three Level 1 Slime stages from `public/assets`. It still generates temporary Fireball, pickup, crate, and shadow textures until those production files are supplied.
+
+The 256 x 256 Ranger sources render at 132 x 132 so their transparent-bound body aligns with the authoritative 30-unit player collision radius. The 256 x 256 rock sources render at 180 x 180 so their visible mass aligns with the authoritative 65-unit rock radius; gameplay hitboxes remain server-owned.
+
+The complete file list, canvas sizes, minimal animation rules, delivery order, and future naming contract live in [`art-assets.md`](art-assets.md).
 
 ## Run and verify
 

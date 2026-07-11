@@ -15,7 +15,7 @@ import (
 	"survive-bro/apps/backend/internal/simulation"
 )
 
-const MaxPlayers = 4
+const MaxPlayers = 6
 
 var (
 	ErrClosed                  = errors.New("room closed")
@@ -37,6 +37,7 @@ type Summary struct {
 	State       State
 	PlayerCount int
 	ExpiresAt   time.Time
+	LevelID     string
 }
 
 type JoinResult struct {
@@ -62,6 +63,7 @@ type Room struct {
 	done     chan struct{}
 	onClose  func(string, *Room)
 	metrics  *observability.Collector
+	level    simulation.LevelDefinition
 }
 
 type summaryCommand struct{ response chan Summary }
@@ -95,7 +97,7 @@ type leaveCommand struct {
 
 type closeCommand struct{ done chan struct{} }
 
-func newRoom(id, code string, ttl time.Duration, now func() time.Time, metrics *observability.Collector, onClose func(string, *Room)) *Room {
+func newRoom(id, code string, level simulation.LevelDefinition, ttl time.Duration, now func() time.Time, metrics *observability.Collector, onClose func(string, *Room)) *Room {
 	room := &Room{
 		id:       id,
 		code:     code,
@@ -105,6 +107,7 @@ func newRoom(id, code string, ttl time.Duration, now func() time.Time, metrics *
 		done:     make(chan struct{}),
 		onClose:  onClose,
 		metrics:  metrics,
+		level:    level,
 	}
 	go room.run()
 	return room
@@ -213,7 +216,7 @@ func (r *Room) run() {
 		case raw := <-r.commands:
 			switch command := raw.(type) {
 			case summaryCommand:
-				command.response <- Summary{Code: r.code, State: matchState(match), PlayerCount: len(clients), ExpiresAt: expiresAt}
+				command.response <- Summary{Code: r.code, State: matchState(match), PlayerCount: len(clients), ExpiresAt: expiresAt, LevelID: r.level.ID}
 			case joinCommand:
 				result, createdMatch, err := r.join(clients, &hostPlayerID, &match, command)
 				command.response <- joinResponse{result: result, err: err}
@@ -331,7 +334,7 @@ func (r *Room) join(clients map[string]*Player, hostPlayerID *string, match **si
 
 	createdMatch := *match == nil || (*match).Finished
 	if createdMatch {
-		*match = simulation.NewMatch(r.now(), r.now().UnixNano())
+		*match = simulation.NewMatch(r.now(), r.now().UnixNano(), r.level)
 		for _, existing := range orderedPlayers(clients) {
 			(*match).AddPlayer(existing.ID, existing.DisplayName, r.now())
 		}
@@ -393,13 +396,13 @@ func (r *Room) sendMatchStarted(client *Player, match *simulation.Match) {
 	}
 	payload := protocol.MatchStartedPayload{
 		RoomName:    r.code,
-		MapID:       "meadow",
+		MapID:       r.level.ID,
 		MapWidth:    simulation.WorldWidth,
 		MapHeight:   simulation.WorldHeight,
 		StartedAtMs: match.StartedAt.UnixMilli(),
-		Obstacles:   make([]protocol.Obstacle, 0, len(simulation.Obstacles)),
+		Obstacles:   make([]protocol.Obstacle, 0, len(r.level.Obstacles)),
 	}
-	for _, obstacle := range simulation.Obstacles {
+	for _, obstacle := range r.level.Obstacles {
 		payload.Obstacles = append(payload.Obstacles, protocol.Obstacle{ID: obstacle.ID, Type: obstacle.Type, X: obstacle.X, Y: obstacle.Y, Radius: obstacle.Radius})
 	}
 	envelope, err := protocol.NewEnvelope(protocol.TypeMatchStarted, "", payload)
@@ -423,6 +426,11 @@ func (r *Room) broadcastSimulationEvents(clients map[string]*Player, events simu
 	}
 	for _, removed := range events.RemovedProjectiles {
 		for _, playerID := range r.broadcastCritical(clients, protocol.TypeProjectileRemoved, protocol.ProjectileRemovedPayload{ProjectileID: removed.ID, Reason: removed.Reason}) {
+			slow[playerID] = struct{}{}
+		}
+	}
+	for _, upgrade := range events.AppliedUpgrades {
+		for _, playerID := range r.broadcastCritical(clients, protocol.TypeUpgradeApplied, upgrade) {
 			slow[playerID] = struct{}{}
 		}
 	}

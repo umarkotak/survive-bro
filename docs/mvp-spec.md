@@ -4,7 +4,7 @@ This document extracts the binding product rules from the initial design brief. 
 
 ## Product
 
-Build a browser-first, cooperative, top-down survival game for one to four anonymous players. A match lasts five minutes. The team wins if at least one player is alive when the timer reaches zero and loses when all players are dead.
+Build a browser-first, cooperative, top-down survival game for one to six anonymous players. Level 1 lasts six minutes. The team wins if at least one player is alive when the level-ending event fires and loses when all players are dead.
 
 Controls:
 
@@ -15,15 +15,15 @@ Controls:
 
 ## Player journey
 
-1. Enter a display name.
-2. Enter a room name. If it does not exist, create it; otherwise join its live battlefield.
-3. Start immediately as Ranger. Up to three more players may join the same match.
-4. Survive for five minutes or lose when every player dies.
+1. Set a display name, persisted on the device.
+2. Browse joinable rooms or create a generated five-letter room after selecting a level.
+3. Start immediately as Ranger. Up to five more players may join the same match.
+4. Survive until the level-ending event or lose when every player dies.
 5. View the shared result and return to room entry.
 
 ## Room rules
 
-- Capacity is 1–4 players.
+- Capacity is 1–6 players.
 - Names are case-insensitive, canonicalized to uppercase, 1–24 characters, and contain only letters, numbers, `-`, and `_`.
 - The first completed WebSocket join becomes host.
 - The first player starts the match immediately; late joins are allowed while capacity remains.
@@ -37,7 +37,7 @@ Controls:
 
 | Property | MVP value |
 | --- | ---: |
-| Duration | 5 minutes |
+| Level 1 duration | 6 minutes |
 | Map | 3200 x 1800 units |
 | Simulation | 20 ticks/second |
 | Snapshots | 10/second |
@@ -51,10 +51,9 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 
 ### Ranger
 
-- HP `100`, speed `220`, pickup radius `120`, weapon `arc_bolt`.
-- Arc Bolt: damage `20`, cooldown `750 ms`, base speed `700`, range `700`, radius `10`.
-- Each team level above level 1 adds `70` projectile speed (`10%` of the base speed). The server applies the current level when it spawns a projectile.
-- Levels `1`, `2`, `3`, and `4+` fire `1`, `2`, `3`, and `4` straight trajectories respectively. Trajectories use a centered `10°` spread and remain capped at four.
+- HP `100`, speed `220`, pickup radius `120`, weapon `fireball`.
+- Fireball: damage `20`, cooldown `750 ms`, base speed `700`, range `700`, radius `10`, burst `1`, directions `1`.
+- Burst caps at two and directions cap at four. Directions use a centered `10°` spread; burst projectiles use a small centered `3°` separation.
 - Target nearest enemy; each trajectory is straight and non-homing.
 - Remove on enemy hit, obstacle hit, or maximum range.
 
@@ -64,14 +63,15 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 - Guardian Pulse: damage `14`, cooldown `1200 ms`, radius `135`.
 - Server damages all enemies in range; the client pulse is visual only.
 
-All source sprites face right. Horizontal movement sets facing; vertical movement preserves it; attacks do not change it.
+All source sprites face right. Horizontal movement sets facing; vertical movement preserves it; attacks do not change it. Ranger idle uses one static image, walking loops `walk-1 -> walk-2 -> walk-3 -> walk-2` at `160 ms` per frame, and a Fireball spawn temporarily overrides movement with `attack-1` for `140 ms`.
 
-### Crawler
+### Level 1 Slimes
 
-- HP `40`, speed `80`, contact damage `10`, contact cooldown `800 ms`, radius `24`, XP `1`.
-- Target the nearest living player, move directly, slide around obstacles, and drop one XP orb on death.
-
-The configuration may support a disabled Brute elite: HP `180`, speed `55`, damage `20`, cooldown `1000 ms`, radius `38`, XP `6`, available after 150 seconds.
+- Stage 1 (`0:00`): HP `40`, speed `80`, contact damage `10`, radius `24`, XP `1`.
+- Stage 2 (`1:00`): replaces normal Stage 1 spawns; HP `90`, speed `92`, contact damage `16`, radius `30`, XP `2`.
+- Stage 3 boss (`5:00`): one boss spawns with HP `1800`, speed `62`, contact damage `28`, radius `54`, XP `30`.
+- At `6:00`, the level ends and clients show `kills × 100 + team level × 250 + survived seconds` as the final score.
+- Every Slime targets the nearest living player, moves directly, slides around obstacles, and drops XP on death.
 
 ### Meadow
 
@@ -96,18 +96,13 @@ The configuration may support a disabled Brute elite: HP `180`, speed `55`, dama
 
 ## Experience and upgrades
 
-Experience is team-shared. Threshold: `round(8 + 5 * level^1.45)`. Every surviving player levels together. Each level immediately increases Arc Bolt speed and trajectory count, movement speed by `8%`, damage reduction armor by `10` percentage points, and XP-crystal magnet radius by `15%` of the base radius. Projectile count caps at four, movement bonus caps at `80%`, armor caps at `60%`, and magnet radius caps at `600` units.
+Experience and team level are shared. Threshold: `round(8 + 5 * level^1.45)`. Attributes are individual. On every team level, each player receives one independently random eligible upgrade. A power crate gives one random eligible upgrade only to its collector. Gameplay never pauses.
 
-XP crystals inside the current magnet radius move toward the nearest living player at `900` units/second and collect at `32` units. Every twelfth team kill also drops a power crate. A collected crate randomly adds one permanent team haste (`+8%` base movement), armor (`+10` percentage points), or magnet (`+60` units) stack; each crate effect is capped at five stacks. Individual upgrade choices remain a later milestone.
+XP crystals inside the fixed `120`-unit pickup radius move toward the nearest living player at `900` units/second and collect at `32` units. Every twelfth team kill drops a power crate.
 
-The server offers three valid choices. Play continues. After eight seconds, apply the first offer if no selection arrives.
+Random effects are: max health `+20` and heal `20`; armor `+5` percentage points (cap `60%`); movement speed `+8%` base (cap `+80%`); regeneration `+1 HP/s`; attack buff `+10%`; cooldown reduction `+8` percentage points (cap `60%`); Fireball damage `+4`; projectile speed `+70`; burst `+1` (cap `2`); or directions `+1` (cap `4`). Capped upgrades are removed from the eligible roll.
 
-Initial generic, stack-limited effects:
-
-- `damage_up`: +15% weapon damage, max 5.
-- `cooldown_up`: -10% cooldown, max 5.
-- `movement_speed_up`: +8% speed, max 5.
-- `vitality_up`: +20 max HP and heal 20, max 5.
+Every applied personal upgrade emits an authoritative event identifying whether it came from a team level-up or treasure chest. The owning client shows a temporary top-centre notification and keeps an in-memory history for the current run.
 
 ## Reliability and security
 
@@ -126,4 +121,4 @@ Return survival time, team level, total kills, and per-player damage dealt, dama
 
 ## Explicit non-goals
 
-Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, public room browsing, chat, PvP, gamepads, additional maps, unlocks, cosmetics, inventory, equipment, procedural maps, bosses, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.
+Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, chat, PvP, gamepads, additional maps, unlocks, cosmetics, inventory, equipment, procedural maps, bosses, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.

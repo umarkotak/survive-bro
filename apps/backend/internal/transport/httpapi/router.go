@@ -18,6 +18,7 @@ import (
 	"survive-bro/apps/backend/internal/config"
 	"survive-bro/apps/backend/internal/protocol"
 	"survive-bro/apps/backend/internal/room"
+	"survive-bro/apps/backend/internal/simulation"
 )
 
 const roomLocalKey = "survive_bro_room"
@@ -50,6 +51,8 @@ func NewRouter(cfg config.Config, rooms *room.Manager, logger *slog.Logger, read
 	app.Get("/health/live", handler.live)
 	app.Get("/health/ready", handler.readiness)
 	app.Get("/metrics", handler.metrics)
+	app.Get("/api/v1/rooms", handler.listRooms)
+	app.Get("/api/v1/levels", handler.listLevels)
 	app.Post("/api/v1/rooms", handler.createRoom)
 	app.Put("/api/v1/rooms/:roomName", handler.ensureRoom)
 	app.Get("/api/v1/rooms/:roomName", handler.inspectRoom)
@@ -73,6 +76,30 @@ func NewRouter(cfg config.Config, rooms *room.Manager, logger *slog.Logger, read
 	})
 
 	return app
+}
+
+func (h *Handler) listLevels(c fiber.Ctx) error {
+	levels := make([]fiber.Map, 0)
+	for _, level := range simulation.AvailableLevels() {
+		levels = append(levels, fiber.Map{"id": level.ID, "name": level.Name, "durationSeconds": int(level.Duration.Seconds())})
+	}
+	return c.JSON(fiber.Map{"levels": levels})
+}
+
+func (h *Handler) listRooms(c fiber.Ctx) error {
+	summaries, err := h.rooms.List(c.Context())
+	if err != nil {
+		h.logger.Error("list rooms", "error", err)
+		return writeHTTPError(c, fiber.StatusInternalServerError, "internal_error", "could not list rooms")
+	}
+	rooms := make([]fiber.Map, 0, len(summaries))
+	for _, summary := range summaries {
+		rooms = append(rooms, fiber.Map{
+			"roomName": summary.Code, "status": summary.State, "playerCount": summary.PlayerCount,
+			"maxPlayers": room.MaxPlayers, "joinable": summary.PlayerCount < room.MaxPlayers, "levelId": summary.LevelID,
+		})
+	}
+	return c.JSON(fiber.Map{"rooms": rooms})
 }
 
 func (h *Handler) logRequest(c fiber.Ctx) error {
@@ -122,9 +149,20 @@ func (h *Handler) createRoom(c fiber.Ctx) error {
 }
 
 func (h *Handler) ensureRoom(c fiber.Ctx) error {
-	ensured, created, err := h.rooms.Ensure(c.Params("roomName"))
+	request := struct {
+		LevelID string `json:"levelId"`
+	}{}
+	if len(c.Body()) > 0 {
+		if err := sonic.Unmarshal(c.Body(), &request); err != nil {
+			return writeHTTPError(c, fiber.StatusBadRequest, "invalid_payload", "room payload is invalid")
+		}
+	}
+	ensured, created, err := h.rooms.Ensure(c.Params("roomName"), request.LevelID)
 	if errors.Is(err, room.ErrInvalidRoomName) {
 		return writeHTTPError(c, fiber.StatusBadRequest, "invalid_room_name", err.Error())
+	}
+	if errors.Is(err, room.ErrInvalidLevel) {
+		return writeHTTPError(c, fiber.StatusBadRequest, "invalid_level", err.Error())
 	}
 	if err != nil {
 		h.logger.Error("ensure room", "error", err)
@@ -138,6 +176,7 @@ func (h *Handler) ensureRoom(c fiber.Ctx) error {
 		"roomName": summary.Code,
 		"status":   summary.State,
 		"created":  created,
+		"levelId":  summary.LevelID,
 	})
 }
 
@@ -156,6 +195,7 @@ func (h *Handler) inspectRoom(c fiber.Ctx) error {
 		"playerCount": summary.PlayerCount,
 		"maxPlayers":  room.MaxPlayers,
 		"joinable":    summary.PlayerCount < room.MaxPlayers,
+		"levelId":     summary.LevelID,
 	})
 }
 

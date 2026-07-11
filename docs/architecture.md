@@ -6,7 +6,7 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 
 ## Client boundaries
 
-- React owns name/room entry, HUD, connection state, results, and the touch joystick overlay. Character selection and upgrades remain planned.
+- React owns persisted username setup, room browsing/creation, HUD, connection state, results, and the touch joystick overlay.
 - Phaser owns the map, entities, camera, interpolation, local prediction, pooling, and visual effects.
 - `NetworkClient` owns socket lifecycle, envelopes, heartbeat, reconnect, decoding, and subscriptions.
 - `MultiplayerSession` owns room, identity, connection, match, and result state.
@@ -17,7 +17,7 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 
 Routes:
 
-- `/`: room entry, gameplay, and results. Entering a room name idempotently creates or finds it before opening one socket.
+- `/`: username setup, room browser, level selection during room creation, gameplay, and scored results. The browser lists rooms over HTTP and idempotently ensures the selected room/level before opening one socket.
 
 ## Server boundaries
 
@@ -35,7 +35,7 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to four players may join the running match. Planned lobby/selection/countdown/rematch transitions are intentionally deferred.
+The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, enemies, and ordered timed events. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 

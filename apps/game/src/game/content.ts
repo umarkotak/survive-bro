@@ -6,7 +6,7 @@ export const RANGER = {
   pickupRadius: 120,
   collisionRadius: 30,
   weapon: {
-    id: 'arc_bolt',
+    id: 'fireball',
     damage: 20,
     cooldownMs: 750,
     projectileSpeed: 700,
@@ -15,15 +15,10 @@ export const RANGER = {
   },
 } as const
 
-export const CRAWLER = {
-  id: 'crawler',
-  name: 'Crawler',
-  baseHp: 40,
-  movementSpeed: 80,
-  contactDamage: 10,
-  contactCooldownMs: 800,
-  collisionRadius: 24,
-  experienceValue: 1,
+export const SLIME_STAGES = {
+  'slime-stage-1': { texture: 'enemy-slime-stage-1', displaySize: 132 },
+  'slime-stage-2': { texture: 'enemy-slime-stage-2', displaySize: 154 },
+  'slime-stage-3': { texture: 'enemy-slime-stage-3', displaySize: 220 },
 } as const
 
 export const LARGE_ROCK = {

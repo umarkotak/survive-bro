@@ -12,11 +12,13 @@ The removed JSON v1 socket must not silently accept v2 clients. Frontend and bac
 
 ## Transport
 
-Before opening the socket, the client idempotently ensures the canonical room through JSON HTTP:
+The menu lists rooms through `GET /api/v1/rooms`, returning `{ "rooms": [{ "roomName", "status", "playerCount", "maxPlayers", "joinable" }] }`. Before opening the socket, the client idempotently ensures the selected canonical room:
 
 ```http
 PUT /api/v1/rooms/{roomName}
 ```
+
+When creating a room, the optional Sonic-JSON body is `{ "levelId": "level-1" }`. Existing rooms retain their original level. Room-list and inspection responses include `levelId`.
 
 Every WebSocket application message uses binary opcode `0x2`. Text frames are rejected. The first message must be `join_room` within five seconds. The maximum decoded frame remains 16 KiB.
 
@@ -50,6 +52,7 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 | `69` | S→C | `projectile_removed` |
 | `70` | S→C | `match_ended` |
 | `71` | S→C | `pong` |
+| `76` | S→C | `upgrade_applied` |
 | `126` | S→C | `error` |
 | `127` | S→C | `server_shutdown` |
 
@@ -70,8 +73,9 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 - `snapshot`: header/team fields and entity arrays described below.
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
 - `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`.
-- `match_ended`: `outcome u8` (`0 lost`, `1 won`), `survivalMs u32`, `teamLevel u16`, `totalKills u32`.
+- `match_ended`: `outcome u8` (`0 lost`, `1 won`), `survivalMs u32`, `teamLevel u16`, `totalKills u32`, `score u32`.
 - `pong`: empty.
+- `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs are `max_health`, `armor`, `movement_speed`, `health_regeneration`, `attack_buff`, `cooldown`, `spell_damage`, `projectile_speed`, `spell_burst`, or `spell_directions`.
 - `error`: `code string`, `message string`.
 - `server_shutdown`: `reason string`.
 
@@ -88,14 +92,22 @@ playerCount u8
     velocityX f32, velocityY f32
     movementSpeed f32
     armorPercent f32
+    healthRegeneration f32
+    attackBuffPercent f32
+    cooldownPercent f32
     flags u8 (bit0 facing-left, bit1 alive)
     hp u16, maxHp u16
+    spellDamage u16
+    projectileSpeed f32
+    spellBurst u8
+    spellDirections u8
     lastProcessedInput u32
     kills u32
 monsterCount u16
   repeated monster:
     id u32
     x f32, y f32
+    typeId string
     hp u16, maxHp u16
 pickupCount u16
   repeated pickup:
@@ -106,19 +118,17 @@ teamLevel u16
 teamExperience u16
 teamExperienceRequired u16
 teamTotalKills u32
-teamProjectileCount u8
-teamPickupRadius f32
 remainingMs u32
 ```
 
-Level scaling is server-authoritative. Levels 1–4 fire 1–4 Arc Bolt trajectories and further levels stay capped at four. Each level above one also increases movement speed, armor, and XP-crystal magnet radius. Every twelfth team kill drops a power crate; collecting one adds a bounded random team haste, armor, or magnet stack. Snapshot stats include the resolved values after level and crate effects.
+XP and team level are shared, but attributes are individual. Each team level independently rolls one eligible upgrade for every player; a power crate rolls one for its collector. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, Fireball damage, projectile speed, burst (maximum two), and directions (maximum four). A volley fires `burst × directions` projectiles.
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 
 ## Quick-play lifecycle
 
-- The first joined player starts a five-minute match immediately.
-- Up to four players may join the named room while it is running.
+- The first joined player starts the selected level immediately. Level 1 ends at six minutes.
+- Up to six players may join the named room while it is running.
 - Late joiners spawn around map centre according to current player order.
 - When the room becomes empty, its match resets and the empty-room expiry timer starts.
 - The server remains authoritative for players, enemies, projectiles, damage, XP, timing, and results.

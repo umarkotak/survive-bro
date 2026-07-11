@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	maxDecodedPlayers   = 4
+	maxDecodedPlayers   = 6
 	maxDecodedObstacles = 256
 	maxDecodedMonsters  = 1024
 	maxDecodedPickups   = 2048
@@ -299,6 +299,27 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 			return err
 		}
 		e.u8(reason)
+	case TypeUpgradeApplied:
+		value, ok := payload.(UpgradeAppliedPayload)
+		if !ok {
+			return payloadTypeError(messageType, payload)
+		}
+		if err := e.string(value.PlayerID); err != nil {
+			return err
+		}
+		source, err := encodeUpgradeSource(value.Source)
+		if err != nil {
+			return err
+		}
+		e.u8(source)
+		if err := e.string(value.Attribute); err != nil {
+			return err
+		}
+		for _, field := range []float64{value.BaseValue, value.AddedValue, value.FinalValue} {
+			if err := e.f32(field); err != nil {
+				return err
+			}
+		}
 	case TypeMatchEnded:
 		value, ok := payload.(MatchEndedPayload)
 		if !ok {
@@ -324,6 +345,11 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 			return err
 		}
 		e.u32(kills)
+		score, err := nonNegativeUint32Int(value.Score, "score")
+		if err != nil {
+			return err
+		}
+		e.u32(score)
 	case TypeError:
 		value, ok := payload.(ErrorPayload)
 		if !ok {
@@ -361,7 +387,7 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		if err := e.string(player.DisplayName); err != nil {
 			return err
 		}
-		for _, field := range []float64{player.X, player.Y, player.VelocityX, player.VelocityY, player.MovementSpeed, player.ArmorPercent} {
+		for _, field := range []float64{player.X, player.Y, player.VelocityX, player.VelocityY, player.MovementSpeed, player.ArmorPercent, player.HealthRegeneration, player.AttackBuffPercent, player.CooldownPercent} {
 			if err := e.f32(field); err != nil {
 				return err
 			}
@@ -386,6 +412,22 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		}
 		e.u16(hp)
 		e.u16(maxHP)
+		spellDamage, err := nonNegativeUint16(player.SpellDamage, "spell damage")
+		if err != nil {
+			return err
+		}
+		e.u16(spellDamage)
+		if err := e.f32(player.ProjectileSpeed); err != nil {
+			return err
+		}
+		if player.SpellBurst < 1 || player.SpellBurst > 2 {
+			return fmt.Errorf("spell burst is invalid")
+		}
+		if player.SpellDirections < 1 || player.SpellDirections > 4 {
+			return fmt.Errorf("spell directions is invalid")
+		}
+		e.u8(uint8(player.SpellBurst))
+		e.u8(uint8(player.SpellDirections))
 		lastInput, err := uint32Value(player.LastProcessedInput, "last processed input")
 		if err != nil {
 			return err
@@ -411,6 +453,9 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 			return err
 		}
 		if err := e.f32(monster.Y); err != nil {
+			return err
+		}
+		if err := e.string(monster.TypeID); err != nil {
 			return err
 		}
 		hp, err := nonNegativeUint16(monster.HP, "monster hp")
@@ -470,14 +515,6 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 	e.u16(experience)
 	e.u16(required)
 	e.u32(kills)
-	projectileCount, err := nonNegativeUint8(value.Team.ProjectileCount, "team projectile count")
-	if err != nil {
-		return err
-	}
-	e.u8(projectileCount)
-	if err := e.f32(value.Team.PickupRadius); err != nil {
-		return err
-	}
 	e.u32(remaining)
 	return nil
 }
@@ -638,6 +675,33 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 		}
 		reason, err := decodeRemovalReason(reasonID)
 		return ProjectileRemovedPayload{ProjectileID: uint64(id), Reason: reason}, err
+	case TypeUpgradeApplied:
+		playerID, err := d.string()
+		if err != nil {
+			return nil, err
+		}
+		sourceID, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		source, err := decodeUpgradeSource(sourceID)
+		if err != nil {
+			return nil, err
+		}
+		attribute, err := d.string()
+		if err != nil {
+			return nil, err
+		}
+		baseValue, err := d.f32()
+		if err != nil {
+			return nil, err
+		}
+		addedValue, err := d.f32()
+		if err != nil {
+			return nil, err
+		}
+		finalValue, err := d.f32()
+		return UpgradeAppliedPayload{PlayerID: playerID, Source: source, Attribute: attribute, BaseValue: baseValue, AddedValue: addedValue, FinalValue: finalValue}, err
 	case TypeMatchEnded:
 		outcomeID, err := d.u8()
 		if err != nil {
@@ -656,7 +720,11 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 			return nil, err
 		}
 		kills, err := d.u32()
-		return MatchEndedPayload{Outcome: outcome, SurvivalMs: int64(survival), TeamLevel: int(level), TotalKills: int(kills)}, err
+		if err != nil {
+			return nil, err
+		}
+		score, err := d.u32()
+		return MatchEndedPayload{Outcome: outcome, SurvivalMs: int64(survival), TeamLevel: int(level), TotalKills: int(kills), Score: int(score)}, err
 	case TypeError:
 		code, err := d.string()
 		if err != nil {
@@ -814,6 +882,10 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
+		typeID, err := d.string()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
 		hp, err := d.u16()
 		if err != nil {
 			return SnapshotPayload{}, err
@@ -822,7 +894,7 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
-		monsters = append(monsters, SnapshotMonster{ID: uint64(id), X: x, Y: y, HP: int(hp), MaxHP: int(maxHP)})
+		monsters = append(monsters, SnapshotMonster{ID: uint64(id), TypeID: typeID, X: x, Y: y, HP: int(hp), MaxHP: int(maxHP)})
 	}
 	pickupCount, err := d.u16()
 	if err != nil {
@@ -871,21 +943,13 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 	if err != nil {
 		return SnapshotPayload{}, err
 	}
-	projectileCount, err := d.u8()
-	if err != nil {
-		return SnapshotPayload{}, err
-	}
-	pickupRadius, err := d.f32()
-	if err != nil {
-		return SnapshotPayload{}, err
-	}
 	remaining, err := d.u32()
 	if err != nil {
 		return SnapshotPayload{}, err
 	}
 	return SnapshotPayload{
 		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Pickups: pickups,
-		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills), ProjectileCount: int(projectileCount), PickupRadius: pickupRadius},
+		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills)},
 		RemainingMs: int64(remaining),
 	}, nil
 }
@@ -899,7 +963,7 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	if err != nil {
 		return SnapshotPlayer{}, err
 	}
-	values := make([]float64, 6)
+	values := make([]float64, 9)
 	for index := range values {
 		values[index], err = d.f32()
 		if err != nil {
@@ -918,6 +982,22 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	if err != nil {
 		return SnapshotPlayer{}, err
 	}
+	spellDamage, err := d.u16()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
+	projectileSpeed, err := d.f32()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
+	spellBurst, err := d.u8()
+	if err != nil || spellBurst < 1 || spellBurst > 2 {
+		return SnapshotPlayer{}, fmt.Errorf("invalid spell burst %d", spellBurst)
+	}
+	spellDirections, err := d.u8()
+	if err != nil || spellDirections < 1 || spellDirections > 4 {
+		return SnapshotPlayer{}, fmt.Errorf("invalid spell directions %d", spellDirections)
+	}
 	lastInput, err := d.u32()
 	if err != nil {
 		return SnapshotPlayer{}, err
@@ -932,7 +1012,8 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	}
 	return SnapshotPlayer{
 		ID: id, DisplayName: name, X: values[0], Y: values[1], VelocityX: values[2], VelocityY: values[3],
-		MovementSpeed: values[4], ArmorPercent: values[5],
+		MovementSpeed: values[4], ArmorPercent: values[5], HealthRegeneration: values[6], AttackBuffPercent: values[7], CooldownPercent: values[8],
+		SpellDamage: int(spellDamage), ProjectileSpeed: projectileSpeed, SpellBurst: int(spellBurst), SpellDirections: int(spellDirections),
 		Facing: facing, HP: int(hp), MaxHP: int(maxHP), Alive: flags&2 != 0,
 		LastProcessedInput: uint64(lastInput), Kills: int(kills),
 	}, nil
@@ -1040,6 +1121,28 @@ func decodePickupKind(value uint8) (string, error) {
 		return "power_crate", nil
 	default:
 		return "", fmt.Errorf("unknown pickup kind %d", value)
+	}
+}
+
+func encodeUpgradeSource(value string) (uint8, error) {
+	switch value {
+	case "level_up":
+		return 0, nil
+	case "treasure_chest":
+		return 1, nil
+	default:
+		return 0, fmt.Errorf("unknown upgrade source %q", value)
+	}
+}
+
+func decodeUpgradeSource(value uint8) (string, error) {
+	switch value {
+	case 0:
+		return "level_up", nil
+	case 1:
+		return "treasure_chest", nil
+	default:
+		return "", fmt.Errorf("unknown upgrade source %d", value)
 	}
 }
 

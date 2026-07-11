@@ -47,13 +47,17 @@ export class NetworkClient {
   playerId = ''
   roomName = ''
 
-  async connect(roomName: string, displayName: string): Promise<JoinedPayload> {
+  async connect(roomName: string, displayName: string, levelId?: string): Promise<JoinedPayload> {
     this.setConnectionState('connecting')
     const roomPath = `/api/v1/rooms/${encodeURIComponent(roomName)}`
     const roomUrl = joinNetworkUrl(networkConfig.apiBaseUrl, roomPath)
     let ensureResponse: Response
     try {
-      ensureResponse = await fetch(roomUrl, { method: 'PUT' })
+      ensureResponse = await fetch(roomUrl, {
+        method: 'PUT',
+        headers: levelId ? { 'Content-Type': 'application/json' } : undefined,
+        body: levelId ? JSON.stringify({ levelId }) : undefined,
+      })
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       throw new Error(`Room API network request failed: PUT ${roomUrl} — ${detail}`)

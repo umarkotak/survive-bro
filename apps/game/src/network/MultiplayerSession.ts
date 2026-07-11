@@ -6,9 +6,9 @@ export class MultiplayerSession {
   readonly bridge = new GameBridge()
   displayName = ''
 
-  async connect(roomName: string, displayName: string): Promise<void> {
+  async connect(roomName: string, displayName: string, levelId?: string): Promise<void> {
     this.displayName = displayName
-    const joined = await this.network.connect(roomName, displayName)
+    const joined = await this.network.connect(roomName, displayName, levelId)
     this.bridge.patch({
       connection: 'connected',
       roomName: joined.roomName,

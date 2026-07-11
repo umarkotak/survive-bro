@@ -5,17 +5,20 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"survive-bro/apps/backend/internal/observability"
+	"survive-bro/apps/backend/internal/simulation"
 )
 
 const roomCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 var ErrNotFound = errors.New("room not found")
 var ErrInvalidRoomName = errors.New("room name must contain 1 to 24 letters, numbers, hyphens, or underscores")
+var ErrInvalidLevel = errors.New("level does not exist")
 
 type Manager struct {
 	mu      sync.RWMutex
@@ -50,14 +53,15 @@ func (m *Manager) Create() (*Room, error) {
 		if err != nil {
 			return nil, err
 		}
-		created := newRoom(id, code, m.ttl, m.now, m.metrics, m.remove)
+		level, _ := simulation.LevelByID("level-1")
+		created := newRoom(id, code, level, m.ttl, m.now, m.metrics, m.remove)
 		m.rooms[code] = created
 		return created, nil
 	}
 	return nil, fmt.Errorf("generate unique room code")
 }
 
-func (m *Manager) Ensure(name string) (*Room, bool, error) {
+func (m *Manager) Ensure(name string, levelIDs ...string) (*Room, bool, error) {
 	normalized, err := NormalizeName(name)
 	if err != nil {
 		return nil, false, err
@@ -68,11 +72,19 @@ func (m *Manager) Ensure(name string) (*Room, bool, error) {
 	if existing, ok := m.rooms[normalized]; ok {
 		return existing, false, nil
 	}
+	levelID := "level-1"
+	if len(levelIDs) > 0 && levelIDs[0] != "" {
+		levelID = levelIDs[0]
+	}
+	level, ok := simulation.LevelByID(levelID)
+	if !ok {
+		return nil, false, ErrInvalidLevel
+	}
 	id, err := secureToken("room_", 16)
 	if err != nil {
 		return nil, false, err
 	}
-	created := newRoom(id, normalized, m.ttl, m.now, m.metrics, m.remove)
+	created := newRoom(id, normalized, level, m.ttl, m.now, m.metrics, m.remove)
 	m.rooms[normalized] = created
 	return created, true, nil
 }
@@ -115,6 +127,29 @@ func (m *Manager) Inspect(ctx context.Context, code string) (Summary, error) {
 	return room.Summary(ctx)
 }
 
+func (m *Manager) List(ctx context.Context) ([]Summary, error) {
+	m.mu.RLock()
+	rooms := make([]*Room, 0, len(m.rooms))
+	for _, current := range m.rooms {
+		rooms = append(rooms, current)
+	}
+	m.mu.RUnlock()
+
+	summaries := make([]Summary, 0, len(rooms))
+	for _, current := range rooms {
+		summary, err := current.Summary(ctx)
+		if errors.Is(err, ErrClosed) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, summary)
+	}
+	sort.Slice(summaries, func(i, j int) bool { return summaries[i].Code < summaries[j].Code })
+	return summaries, nil
+}
+
 func (m *Manager) Count() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -149,7 +184,7 @@ func (m *Manager) remove(code string, target *Room) {
 }
 
 func secureRoomCode() (string, error) {
-	buffer := make([]byte, 6)
+	buffer := make([]byte, 5)
 	if _, err := rand.Read(buffer); err != nil {
 		return "", err
 	}

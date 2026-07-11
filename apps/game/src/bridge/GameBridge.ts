@@ -26,8 +26,18 @@ export interface GameHudState {
   roomName: string
   playerId: string
   displayName: string
+  armorPercent: number
+  movementSpeed: number
+  healthRegeneration: number
+  attackBuffPercent: number
+  cooldownPercent: number
+  spellDamage: number
+  projectileSpeed: number
+  spellBurst: number
+  spellDirections: number
   connection: ConnectionState
   outcome: MatchOutcome
+  score: number
   diagnostics: GameDiagnostics
 }
 
@@ -39,15 +49,25 @@ const initialState: GameHudState = {
   level: 1,
   experience: 0,
   experienceRequired: 13,
-  remainingMs: 5 * 60 * 1000,
+  remainingMs: 6 * 60 * 1000,
   kills: 0,
   enemies: 0,
   playerCount: 1,
   roomName: '',
   playerId: '',
   displayName: '',
+  armorPercent: 0,
+  movementSpeed: 220,
+  healthRegeneration: 0,
+  attackBuffPercent: 0,
+  cooldownPercent: 0,
+  spellDamage: 20,
+  projectileSpeed: 700,
+  spellBurst: 1,
+  spellDirections: 1,
   connection: 'connecting',
   outcome: 'playing',
+  score: 0,
   diagnostics: {
     fps: 0,
     activeSprites: 0,

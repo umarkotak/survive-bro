@@ -5,7 +5,7 @@ import "time"
 const (
 	TickDuration         = 50 * time.Millisecond
 	SnapshotEveryTicks   = 2
-	MatchDuration        = 5 * time.Minute
+	MatchDuration        = 6 * time.Minute
 	InputStaleAfter      = 250 * time.Millisecond
 	WorldWidth           = 3200.0
 	WorldHeight          = 1800.0
@@ -16,28 +16,18 @@ const (
 	PlayerMaxHP          = 100
 	PlayerSpeed          = 220.0
 	PlayerPickupRadius   = 120.0
-	LevelMovementBonus   = 0.08
-	LevelArmorBonus      = 0.10
-	LevelMagnetBonus     = 0.15
 	MaximumMovementBonus = 0.80
 	MaximumArmorPercent  = 0.60
-	MaximumPickupRadius  = 600.0
 	WeaponDamage         = 20
 	WeaponCooldown       = 750 * time.Millisecond
 	ProjectileSpeed      = 700.0
-	ProjectileSpeedLevel = 70.0
 	ProjectileSpread     = 10.0
-	MaximumProjectiles   = 4
 	ProjectileRange      = 700.0
 	ProjectileRadius     = 10.0
 	PickupAttractSpeed   = 900.0
 	PickupCollectRadius  = 32.0
 	PowerCrateEveryKills = 12
 	PowerCrateRadius     = 70.0
-	PowerMaximumStacks   = 5
-	PowerHasteBonus      = 0.08
-	PowerArmorBonus      = 0.10
-	PowerMagnetBonus     = 60.0
 	MonsterMaxHP         = 40
 	MonsterSpeed         = 80.0
 	MonsterRadius        = 24.0
@@ -45,14 +35,6 @@ const (
 	MonsterContactDelay  = 800 * time.Millisecond
 	MonsterXP            = 1
 )
-
-func ProjectileSpeedAtLevel(level int) float64 {
-	return ProjectileSpeed + float64(max(0, level-1))*ProjectileSpeedLevel
-}
-
-func ProjectileCountAtLevel(level int) int {
-	return min(MaximumProjectiles, max(1, level))
-}
 
 type Obstacle struct {
 	ID     string
