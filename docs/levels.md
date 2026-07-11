@@ -24,6 +24,8 @@ The create-room screen loads options from `GET /api/v1/levels` and sends the sel
 | ---: | --- |
 | `0:00` | `spawn_rate`: 1/sec, cap 60, 100% Slime Stage 1. |
 | `1:00` | `spawn_rate`: 1.8/sec, cap 110, 100% Slime Stage 2. Existing Stage 1 enemies remain. |
+| `3:00` | `monster_buff`: existing and future enemies gain `1.5×` HP and `1.2×` speed. |
+| `4:00` | `spawn_rate`: 2.4/sec, cap 150, 100% Slime Stage 2. |
 | `5:00` | Spawn one Slime Stage 3 boss. |
 | `6:00` | End the match and show score. |
 

@@ -69,7 +69,7 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 
 - `joined`: `playerId string`, `reconnectToken string`, `roomName string`, `host u8`.
 - `room_state`: `status u8`, `hostPlayerId string`, `playerCount u8`, then players. Each player is `id string`, `displayName string`, `characterId string`, `flags u8` (`bit0 ready`, `bit1 connected`). Status enum: `0 lobby`, `1 running`, `2 finished`.
-- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`.
+- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`. Public event types are `spawn_rate`, `monster_buff`, `boss`, and `end`.
 - `snapshot`: header/team fields and entity arrays described below.
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
 - `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`.
@@ -110,6 +110,13 @@ monsterCount u16
     x f32, y f32
     typeId string
     hp u16, maxHp u16
+beamCount u16
+  repeated beam:
+    id u32
+    ownerId string
+    spellId string
+    x f32, y f32, angle f32, length f32, width f32
+    remainingMs u32
 pickupCount u16
   repeated pickup:
     id u32
@@ -122,7 +129,7 @@ teamTotalKills u32
 remainingMs u32
 ```
 
-XP and team level are shared, but attributes are individual. Each team level independently rolls one eligible upgrade for every player; a power crate rolls one for its collector. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, Fireball damage, projectile speed, burst (maximum two), and directions (maximum four). A volley fires `burst × directions` projectiles.
+XP and team level are shared, but attributes are individual. Each team level independently rolls one eligible upgrade for every player. When any living player collects a power crate, every player independently rolls one eligible treasure upgrade. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "status": "design-contract",
+  "glossary": {
+    "attributes": {
+      "max_health": { "valueType": "number", "unit": "hp", "appliesTo": ["character", "player"] },
+      "armor_percent": { "valueType": "number", "unit": "ratio", "range": [0, 0.6], "appliesTo": ["character", "player"] },
+      "movement_speed": { "valueType": "number", "unit": "world_units_per_second", "appliesTo": ["character", "player", "enemy"] },
+      "health_regeneration": { "valueType": "number", "unit": "hp_per_second", "appliesTo": ["character", "player"] },
+      "attack_buff_percent": { "valueType": "number", "unit": "ratio", "appliesTo": ["character", "player"] },
+      "cooldown_reduction_percent": { "valueType": "number", "unit": "ratio", "range": [0, 0.6], "appliesTo": ["character", "player"] },
+      "pickup_radius": { "valueType": "number", "unit": "world_units", "appliesTo": ["character", "player"] },
+      "damage": { "valueType": "number", "unit": "hp", "appliesTo": ["spell", "enemy"] },
+      "cooldown_ms": { "valueType": "integer", "unit": "milliseconds", "appliesTo": ["spell", "enemy"] },
+      "projectile_speed": { "valueType": "number", "unit": "world_units_per_second", "appliesTo": ["spell", "projectile"] },
+      "projectile_range": { "valueType": "number", "unit": "world_units", "appliesTo": ["spell", "projectile"] },
+      "projectile_radius": { "valueType": "number", "unit": "world_units", "appliesTo": ["spell", "projectile"] },
+      "collision_radius": { "valueType": "number", "unit": "world_units", "appliesTo": ["character", "enemy", "obstacle"] },
+      "burst": { "valueType": "integer", "unit": "count", "range": [1, 2], "appliesTo": ["spell"] },
+      "directions": { "valueType": "integer", "unit": "count", "range": [1, 4], "appliesTo": ["spell"] },
+      "beam_length": { "valueType": "number", "unit": "world_units", "appliesTo": ["spell"] },
+      "beam_width": { "valueType": "number", "unit": "world_units", "appliesTo": ["spell"] },
+      "linger_duration_ms": { "valueType": "integer", "unit": "milliseconds", "appliesTo": ["spell"] },
+      "damage_interval_ms": { "valueType": "integer", "unit": "milliseconds", "appliesTo": ["spell"] },
+      "health": { "valueType": "number", "unit": "hp", "appliesTo": ["enemy"] },
+      "score": { "valueType": "integer", "unit": "points", "appliesTo": ["enemy"] },
+      "experience_drop": { "valueType": "integer", "unit": "xp", "appliesTo": ["enemy"] },
+      "spawn_rate": { "valueType": "number", "unit": "enemies_per_second", "appliesTo": ["system_event"] },
+      "max_living": { "valueType": "integer", "unit": "count", "appliesTo": ["system_event"] }
+    },
+    "modifierOperations": ["add_flat", "add_percent_of_base", "multiply", "set", "clamp_max"],
+    "modifierTargets": ["player", "spell", "projectile", "enemy", "level_spawn"]
+  },
+  "inventory": {
+    "spellSlots": 5,
+    "buffSlots": 5,
+    "itemKinds": ["spell", "buff"],
+    "acquisition": "level_up_or_treasure",
+    "fullInventoryRule": "exclude_unowned_items",
+    "ownedItemRule": "increase_level",
+    "newItemRule": "add_at_level_1"
+  },
+  "modifiers": {
+    "vitality_plus_20": { "target": "player", "attribute": "max_health", "operation": "add_flat", "value": 20 },
+    "armor_plus_5_percent": { "target": "player", "attribute": "armor_percent", "operation": "add_flat", "value": 0.05 },
+    "movement_plus_8_percent_base": { "target": "player", "attribute": "movement_speed", "operation": "add_percent_of_base", "value": 0.08 },
+    "regeneration_plus_1": { "target": "player", "attribute": "health_regeneration", "operation": "add_flat", "value": 1 },
+    "attack_plus_10_percent": { "target": "player", "attribute": "attack_buff_percent", "operation": "add_flat", "value": 0.1 },
+    "cooldown_plus_8_percent": { "target": "player", "attribute": "cooldown_reduction_percent", "operation": "add_flat", "value": 0.08 },
+    "fireball_damage_plus_4": { "target": "spell", "selector": { "spellId": "fireball" }, "attribute": "damage", "operation": "add_flat", "value": 4 },
+    "fireball_speed_plus_70": { "target": "spell", "selector": { "spellId": "fireball" }, "attribute": "projectile_speed", "operation": "add_flat", "value": 70 },
+    "fireball_burst_plus_1": { "target": "spell", "selector": { "spellId": "fireball" }, "attribute": "burst", "operation": "add_flat", "value": 1 },
+    "fireball_directions_plus_1": { "target": "spell", "selector": { "spellId": "fireball" }, "attribute": "directions", "operation": "add_flat", "value": 1 },
+    "soul_track_length_plus_100": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "beam_length", "operation": "add_flat", "value": 100 },
+    "soul_track_cooldown_minus_150": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "cooldown_ms", "operation": "add_flat", "value": -150 },
+    "soul_track_linger_plus_250": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "linger_duration_ms", "operation": "add_flat", "value": 250 },
+    "soul_track_width_plus_10": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "beam_width", "operation": "add_flat", "value": 10 },
+    "soul_track_directions_plus_1": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "directions", "operation": "add_flat", "value": 1 },
+    "soul_track_damage_plus_6": { "target": "spell", "selector": { "spellId": "soul-track" }, "attribute": "damage", "operation": "add_flat", "value": 6 }
+  },
+  "spells": {
+    "fireball": {
+      "kind": "spell",
+      "name": "Fireball",
+      "description": "A straight projectile that targets the nearest enemy.",
+      "tags": ["projectile", "fire"],
+      "assets": { "projectile": "bullet-fireball", "cast": "character-ranger-attack-1" },
+      "baseAttributes": { "damage": 20, "cooldown_ms": 750, "projectile_speed": 700, "projectile_range": 700, "projectile_radius": 10, "burst": 1, "directions": 1 },
+      "maxLevel": 5,
+      "levels": {
+        "2": ["fireball_damage_plus_4"],
+        "3": ["fireball_speed_plus_70"],
+        "4": ["fireball_directions_plus_1"],
+        "5": ["fireball_burst_plus_1"]
+      }
+    },
+    "soul-track": {
+      "kind": "spell",
+      "attackType": "beam",
+      "name": "Soul Track",
+      "description": "A lingering laser that damages touching enemies every 500 ms.",
+      "tags": ["beam", "soul"],
+      "assets": { "cast": "character-frieren-attack-1" },
+      "baseAttributes": { "damage": 18, "cooldown_ms": 1500, "beam_length": 520, "beam_width": 32, "linger_duration_ms": 1000, "damage_interval_ms": 500, "directions": 1 },
+      "maxLevel": 7,
+      "levels": {
+        "2": ["soul_track_length_plus_100"],
+        "3": ["soul_track_cooldown_minus_150"],
+        "4": ["soul_track_linger_plus_250"],
+        "5": ["soul_track_width_plus_10"],
+        "6": ["soul_track_directions_plus_1"],
+        "7": ["soul_track_damage_plus_6"]
+      }
+    }
+  },
+  "buffs": {
+    "vitality": { "kind": "buff", "name": "Vitality", "maxLevel": 10, "modifierPerLevel": "vitality_plus_20" },
+    "armor": { "kind": "buff", "name": "Armor", "maxLevel": 12, "modifierPerLevel": "armor_plus_5_percent" },
+    "movement": { "kind": "buff", "name": "Fleet Foot", "maxLevel": 10, "modifierPerLevel": "movement_plus_8_percent_base" },
+    "regeneration": { "kind": "buff", "name": "Regeneration", "maxLevel": 10, "modifierPerLevel": "regeneration_plus_1" },
+    "attack": { "kind": "buff", "name": "Power", "maxLevel": 10, "modifierPerLevel": "attack_plus_10_percent" },
+    "cooldown": { "kind": "buff", "name": "Haste", "maxLevel": 8, "modifierPerLevel": "cooldown_plus_8_percent" }
+  },
+  "characters": {
+    "ranger": {
+      "name": "Ranger",
+      "description": "A balanced ranged survivor.",
+      "spriteSet": "character-ranger",
+      "baseAttributes": { "max_health": 100, "armor_percent": 0, "movement_speed": 220, "health_regeneration": 0, "attack_buff_percent": 0, "cooldown_reduction_percent": 0, "pickup_radius": 120 },
+      "startingInventory": { "spells": [{ "id": "fireball", "level": 1 }], "buffs": [] }
+    },
+    "frieren": {
+      "name": "Frieren",
+      "description": "A beam mage who controls space with Soul Track.",
+      "spriteSet": "character-frieren",
+      "baseAttributes": { "max_health": 90, "armor_percent": 0, "movement_speed": 210, "health_regeneration": 0, "attack_buff_percent": 0, "cooldown_reduction_percent": 0, "pickup_radius": 125 },
+      "startingInventory": { "spells": [{ "id": "soul-track", "level": 1 }], "buffs": [] }
+    }
+  },
+  "enemies": {
+    "slime-stage-1": { "name": "Slime", "sprite": "enemy-slime-stage-1", "attributes": { "score": 100, "experience_drop": 1, "health": 60, "movement_speed": 80, "damage": 10, "cooldown_ms": 800, "collision_radius": 24 } },
+    "slime-stage-2": { "name": "Greater Slime", "sprite": "enemy-slime-stage-2", "attributes": { "score": 250, "experience_drop": 2, "health": 90, "movement_speed": 92, "damage": 16, "cooldown_ms": 750, "collision_radius": 30 } },
+    "slime-stage-3": { "name": "Slime King", "sprite": "enemy-slime-stage-3", "attributes": { "score": 5000, "experience_drop": 30, "health": 20000, "movement_speed": 62, "damage": 28, "cooldown_ms": 650, "collision_radius": 54 } }
+  },
+  "levels": {
+    "level-1": {
+      "name": "Slime Meadow",
+      "duration_ms": 360000,
+      "terrainAssets": ["terrain-variant-1", "terrain-variant-2", "terrain-variant-3"],
+      "obstacleAssets": ["obstacle-large-rock-1", "obstacle-large-rock-2", "obstacle-large-rock-3"],
+      "events": [
+        { "id": "opening-slimes", "type": "spawn_rate", "at_ms": 0, "title": "Slimes emerge", "description": "Small Slimes begin surrounding the squad.", "config": { "spawn_rate": 1, "max_living": 60, "composition": [{ "enemyId": "slime-stage-1", "weight": 100 }] } },
+        { "id": "greater-slimes", "type": "spawn_rate", "at_ms": 60000, "title": "Greater Slimes", "description": "Normal spawns switch to Greater Slimes.", "config": { "spawn_rate": 1.8, "max_living": 110, "composition": [{ "enemyId": "slime-stage-2", "weight": 100 }] } },
+        { "id": "slime-surge", "type": "monster_buff", "at_ms": 180000, "title": "Slime Surge", "description": "All Slimes gain 50% health and 20% movement speed.", "config": { "health_multiplier": 1.5, "speed_multiplier": 1.2 } },
+        { "id": "slime-swarm", "type": "spawn_rate", "at_ms": 240000, "title": "Slime Swarm", "description": "Greater Slimes emerge more rapidly.", "config": { "spawn_rate": 2.4, "max_living": 150, "composition": [{ "enemyId": "slime-stage-2", "weight": 100 }] } },
+        { "id": "slime-king", "type": "boss", "at_ms": 300000, "title": "Slime King", "description": "The Slime King enters the meadow.", "config": { "enemyId": "slime-stage-3", "count": 1 } },
+        { "id": "level-complete", "type": "end", "at_ms": 360000, "title": "Dawn", "description": "The run ends and score is calculated.", "config": {} }
+      ]
+    }
+  },
+  "artifacts": {}
+}

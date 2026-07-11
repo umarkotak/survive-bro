@@ -40,6 +40,11 @@ type Player struct {
 	ProjectileSpeed        float64
 	SpellBurst             int
 	SpellDirections        int
+	SpellKind              string
+	BeamLength             float64
+	BeamWidth              float64
+	SpellDuration          time.Duration
+	DamageInterval         time.Duration
 	SpellCooldown          time.Duration
 	SpellRange             float64
 	ProjectileRadius       float64
@@ -85,6 +90,21 @@ type Projectile struct {
 	Radius    float64
 }
 
+type Beam struct {
+	ID             uint64
+	OwnerID        string
+	SpellID        string
+	X              float64
+	Y              float64
+	Angle          float64
+	Length         float64
+	Width          float64
+	Damage         int
+	DamageInterval time.Duration
+	ExpiresAt      time.Duration
+	LastDamage     map[uint64]time.Duration
+}
+
 type Pickup struct {
 	ID    uint64
 	Kind  string
@@ -122,26 +142,30 @@ type TickMetrics struct {
 }
 
 type Match struct {
-	StartedAt        time.Time
-	Tick             uint64
-	Players          map[string]*Player
-	Monsters         map[uint64]*Monster
-	Projectiles      map[uint64]*Projectile
-	Pickups          map[uint64]*Pickup
-	TeamLevel        int
-	TeamExperience   int
-	TotalKills       int
-	EnemyScore       int
-	Elapsed          time.Duration
-	Finished         bool
-	Level            LevelDefinition
-	activeSpawn      SpawnRateDefinition
-	nextLevelEvent   int
-	spawnBudget      float64
-	nextMonsterID    uint64
-	nextProjectileID uint64
-	nextPickupID     uint64
-	rng              *rand.Rand
+	StartedAt               time.Time
+	Tick                    uint64
+	Players                 map[string]*Player
+	Monsters                map[uint64]*Monster
+	Projectiles             map[uint64]*Projectile
+	Beams                   map[uint64]*Beam
+	Pickups                 map[uint64]*Pickup
+	TeamLevel               int
+	TeamExperience          int
+	TotalKills              int
+	EnemyScore              int
+	Elapsed                 time.Duration
+	Finished                bool
+	Level                   LevelDefinition
+	activeSpawn             SpawnRateDefinition
+	monsterHealthMultiplier float64
+	monsterSpeedMultiplier  float64
+	nextLevelEvent          int
+	spawnBudget             float64
+	nextMonsterID           uint64
+	nextProjectileID        uint64
+	nextBeamID              uint64
+	nextPickupID            uint64
+	rng                     *rand.Rand
 }
 
 func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match {
@@ -150,14 +174,17 @@ func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match
 		level = levels[0]
 	}
 	match := &Match{
-		StartedAt:   startedAt,
-		Players:     make(map[string]*Player),
-		Monsters:    make(map[uint64]*Monster),
-		Projectiles: make(map[uint64]*Projectile),
-		Pickups:     make(map[uint64]*Pickup),
-		TeamLevel:   1,
-		Level:       level,
-		rng:         rand.New(rand.NewSource(seed)),
+		StartedAt:               startedAt,
+		Players:                 make(map[string]*Player),
+		Monsters:                make(map[uint64]*Monster),
+		Projectiles:             make(map[uint64]*Projectile),
+		Beams:                   make(map[uint64]*Beam),
+		Pickups:                 make(map[uint64]*Pickup),
+		TeamLevel:               1,
+		monsterHealthMultiplier: 1,
+		monsterSpeedMultiplier:  1,
+		Level:                   level,
+		rng:                     rand.New(rand.NewSource(seed)),
 	}
 	match.processLevelEvents(&Events{})
 	return match
@@ -194,6 +221,11 @@ func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ..
 		ProjectileSpeed:    spell.ProjectileSpeed,
 		SpellBurst:         spell.Burst,
 		SpellDirections:    spell.Directions,
+		SpellKind:          spell.Kind,
+		BeamLength:         spell.BeamLength,
+		BeamWidth:          spell.BeamWidth,
+		SpellDuration:      spell.Duration,
+		DamageInterval:     spell.DamageInterval,
 		SpellCooldown:      spell.Cooldown,
 		SpellRange:         spell.Range,
 		ProjectileRadius:   spell.Radius,
@@ -250,6 +282,7 @@ func (m *Match) Step(now time.Time) Events {
 	phaseStarted = time.Now()
 	m.updateWeapons(&events)
 	events.Metrics.Weapons = time.Since(phaseStarted)
+	m.updateBeams(&events, &events.Metrics)
 	m.updateProjectiles(&events, &events.Metrics)
 	phaseStarted = time.Now()
 	m.updateMonsters()
@@ -310,6 +343,12 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 		monster := m.Monsters[id]
 		monsters = append(monsters, protocol.SnapshotMonster{ID: id, TypeID: monster.TypeID, X: monster.X, Y: monster.Y, HP: monster.HP, MaxHP: monster.MaxHP})
 	}
+	beams := make([]protocol.SnapshotBeam, 0, len(m.Beams))
+	beamIDs := sortedUint64Keys(m.Beams)
+	for _, id := range beamIDs {
+		beam := m.Beams[id]
+		beams = append(beams, protocol.SnapshotBeam{ID: id, OwnerID: beam.OwnerID, SpellID: beam.SpellID, X: beam.X, Y: beam.Y, Angle: beam.Angle, Length: beam.Length, Width: beam.Width, RemainingMs: max(int64(0), (beam.ExpiresAt - m.Elapsed).Milliseconds())})
+	}
 
 	pickups := make([]protocol.SnapshotPickup, 0, len(m.Pickups))
 	pickupIDs := sortedUint64Keys(m.Pickups)
@@ -324,6 +363,7 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 		ServerTimeMs: now.UnixMilli(),
 		Players:      players,
 		Monsters:     monsters,
+		Beams:        beams,
 		Pickups:      pickups,
 		Team: protocol.SnapshotTeam{
 			Level:              m.TeamLevel,
@@ -387,6 +427,15 @@ func (m *Match) updateWeapons(events *Events) {
 		}
 		baseAngle := math.Atan2(target.Y-player.Y, target.X-player.X)
 		spread := ProjectileSpread * math.Pi / 180
+		if player.SpellKind == "beam" {
+			for direction := range player.SpellDirections {
+				angle := baseAngle + (float64(direction)-float64(player.SpellDirections-1)/2)*spread
+				m.nextBeamID++
+				m.Beams[m.nextBeamID] = &Beam{ID: m.nextBeamID, OwnerID: player.ID, SpellID: player.SpellID, X: player.X, Y: player.Y, Angle: angle, Length: player.BeamLength, Width: player.BeamWidth, Damage: int(math.Round(float64(player.SpellDamage) * (1 + player.AttackBuffPercent))), DamageInterval: player.DamageInterval, ExpiresAt: m.Elapsed + player.SpellDuration, LastDamage: make(map[uint64]time.Duration)}
+			}
+			player.LastAttackAt = m.Elapsed
+			continue
+		}
 		for direction := range player.SpellDirections {
 			trajectory := baseAngle + (float64(direction)-float64(player.SpellDirections-1)/2)*spread
 			for burst := range player.SpellBurst {
@@ -462,6 +511,33 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 	metrics.NarrowPhase = time.Since(narrowStarted)
 }
 
+func (m *Match) updateBeams(events *Events, metrics *TickMetrics) {
+	for id, beam := range m.Beams {
+		endX := beam.X + math.Cos(beam.Angle)*beam.Length
+		endY := beam.Y + math.Sin(beam.Angle)*beam.Length
+		for monsterID, monster := range m.Monsters {
+			metrics.CandidatePairs++
+			metrics.NarrowChecks++
+			if distanceToSegment(monster.X, monster.Y, beam.X, beam.Y, endX, endY) > monster.Radius+beam.Width/2 {
+				continue
+			}
+			last, hitBefore := beam.LastDamage[monsterID]
+			if hitBefore && m.Elapsed-last < beam.DamageInterval {
+				continue
+			}
+			beam.LastDamage[monsterID] = m.Elapsed
+			monster.HP -= beam.Damage
+			metrics.ConfirmedHits++
+			if monster.HP <= 0 {
+				m.killMonster(monsterID, beam.OwnerID)
+			}
+		}
+		if m.Elapsed >= beam.ExpiresAt {
+			delete(m.Beams, id)
+		}
+	}
+}
+
 func (m *Match) updateMonsters() {
 	for _, monster := range m.Monsters {
 		target := m.nearestLivingPlayer(monster.X, monster.Y)
@@ -507,12 +583,13 @@ func (m *Match) updateMonsters() {
 func (m *Match) updatePickups(events *Events) {
 	for pickupID, pickup := range m.Pickups {
 		if pickup.Kind == "power_crate" {
-			collector := m.nearestLivingPlayerWithin(pickup.X, pickup.Y, PowerCrateRadius)
-			if collector == nil {
+			if m.nearestLivingPlayerWithin(pickup.X, pickup.Y, PowerCrateRadius) == nil {
 				continue
 			}
 			delete(m.Pickups, pickupID)
-			events.AppliedUpgrades = append(events.AppliedUpgrades, m.applyRandomUpgrade(collector, "treasure_chest"))
+			for _, id := range sortedPlayerIDs(m.Players) {
+				events.AppliedUpgrades = append(events.AppliedUpgrades, m.applyRandomUpgrade(m.Players[id], "treasure_chest"))
+			}
 			continue
 		}
 
@@ -611,7 +688,8 @@ func (m *Match) spawnMonsterOf(enemyID string) {
 			continue
 		}
 		m.nextMonsterID++
-		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: definition.MaxHP, MaxHP: definition.MaxHP, Speed: definition.Speed, Radius: definition.Radius, ContactDamage: definition.ContactDamage, ContactDelay: definition.ContactDelay, Experience: definition.Experience, Score: definition.Score, LastContact: make(map[string]time.Duration)}
+		maxHP := max(1, int(math.Round(float64(definition.MaxHP)*m.monsterHealthMultiplier)))
+		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier, Radius: definition.Radius, ContactDamage: definition.ContactDamage, ContactDelay: definition.ContactDelay, Experience: definition.Experience, Score: definition.Score, LastContact: make(map[string]time.Duration)}
 		return
 	}
 }
@@ -639,7 +717,16 @@ func (m *Match) killMonster(monsterID uint64, ownerID string) {
 }
 
 func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.UpgradeAppliedPayload {
-	available := []string{"max_health", "health_regeneration", "attack_buff", "spell_damage", "projectile_speed"}
+	available := []string{"max_health", "health_regeneration", "attack_buff", "spell_damage"}
+	if player.SpellKind == "projectile" {
+		available = append(available, "projectile_speed")
+		if player.SpellBurst < 2 {
+			available = append(available, "spell_burst")
+		}
+	}
+	if player.SpellKind == "beam" {
+		available = append(available, "beam_length", "beam_width", "spell_duration")
+	}
 	if player.ArmorPercent < MaximumArmorPercent {
 		available = append(available, "armor")
 	}
@@ -648,9 +735,6 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 	}
 	if player.CooldownPercent < 0.60 {
 		available = append(available, "cooldown")
-	}
-	if player.SpellBurst < 2 {
-		available = append(available, "spell_burst")
 	}
 	if player.SpellDirections < 4 {
 		available = append(available, "spell_directions")
@@ -684,8 +768,12 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		player.CooldownPercent = min(0.60, player.CooldownPercent+0.08)
 		finalValue = player.CooldownPercent
 	case "spell_damage":
-		baseValue, addedValue = float64(player.BaseSpellDamage), 4
-		player.SpellDamage += 4
+		increment := 4
+		if player.SpellKind == "beam" {
+			increment = 6
+		}
+		baseValue, addedValue = float64(player.BaseSpellDamage), float64(increment)
+		player.SpellDamage += increment
 		finalValue = float64(player.SpellDamage)
 	case "projectile_speed":
 		baseValue, addedValue = player.BaseProjectileSpeed, 70
@@ -699,6 +787,22 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		baseValue, addedValue = float64(player.BaseSpellDirections), 1
 		player.SpellDirections++
 		finalValue = float64(player.SpellDirections)
+	case "beam_length":
+		spell, _ := SpellByID(player.SpellID)
+		baseValue, addedValue = spell.BeamLength, 100
+		player.BeamLength += 100
+		player.SpellRange = player.BeamLength
+		finalValue = player.BeamLength
+	case "beam_width":
+		spell, _ := SpellByID(player.SpellID)
+		baseValue, addedValue = spell.BeamWidth, 10
+		player.BeamWidth += 10
+		finalValue = player.BeamWidth
+	case "spell_duration":
+		spell, _ := SpellByID(player.SpellID)
+		baseValue, addedValue = float64(spell.Duration.Milliseconds()), 250
+		player.SpellDuration += 250 * time.Millisecond
+		finalValue = float64(player.SpellDuration.Milliseconds())
 	}
 	return protocol.UpgradeAppliedPayload{PlayerID: player.ID, Source: source, Attribute: attribute, BaseValue: baseValue, AddedValue: addedValue, FinalValue: finalValue}
 }
@@ -737,6 +841,16 @@ func (m *Match) processLevelEvents(events *Events) {
 			if event.SpawnRate != nil {
 				m.activeSpawn = *event.SpawnRate
 			}
+		case "monster_buff":
+			if event.MonsterBuff != nil {
+				m.monsterHealthMultiplier *= event.MonsterBuff.HealthMultiplier
+				m.monsterSpeedMultiplier *= event.MonsterBuff.SpeedMultiplier
+				for _, monster := range m.Monsters {
+					monster.HP = max(1, int(math.Round(float64(monster.HP)*event.MonsterBuff.HealthMultiplier)))
+					monster.MaxHP = max(1, int(math.Round(float64(monster.MaxHP)*event.MonsterBuff.HealthMultiplier)))
+					monster.Speed *= event.MonsterBuff.SpeedMultiplier
+				}
+			}
 		case "boss":
 			m.spawnMonsterOf(event.EnemyID)
 		case "end":
@@ -750,6 +864,7 @@ func (m *Match) finish(outcome string, events *Events) {
 	for id := range m.Projectiles {
 		m.removeProjectile(id, "match_ended", events)
 	}
+	clear(m.Beams)
 	events.MatchEnded = &protocol.MatchEndedPayload{
 		Outcome:    outcome,
 		SurvivalMs: m.Elapsed.Milliseconds(),
@@ -757,6 +872,16 @@ func (m *Match) finish(outcome string, events *Events) {
 		TotalKills: m.TotalKills,
 		Score:      m.EnemyScore + m.TeamLevel*250 + int(m.Elapsed/time.Second),
 	}
+}
+
+func distanceToSegment(px, py, ax, ay, bx, by float64) float64 {
+	dx, dy := bx-ax, by-ay
+	lengthSquared := dx*dx + dy*dy
+	if lengthSquared == 0 {
+		return math.Hypot(px-ax, py-ay)
+	}
+	t := clamp(((px-ax)*dx+(py-ay)*dy)/lengthSquared, 0, 1)
+	return math.Hypot(px-(ax+t*dx), py-(ay+t*dy))
 }
 
 func (m *Match) hasLivingPlayer() bool {

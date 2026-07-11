@@ -23,7 +23,7 @@ For library, framework, SDK, API, CLI, or cloud details, fetch current version-s
 | Screens, HUD, input, rendering | `apps/game` | React/Phaser client |
 | Rooms, simulation, combat, lifecycle | `apps/backend` | Go server |
 | Cross-boundary messages | `contracts` | Versioned contract |
-| Balance and content definitions | `game-data` | Validated server data |
+| Balance and content definitions | `game-data` | Runtime only when validated/loaded; otherwise design contract |
 | Decisions and milestone gates | `docs` | Project documentation |
 
 Do not move authority to simplify a caller. Client visuals may predict or interpolate, but the server resolves gameplay.

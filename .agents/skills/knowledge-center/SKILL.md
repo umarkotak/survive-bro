@@ -18,7 +18,7 @@ Use repository evidence, not remembered assumptions.
 
 - Prefer the user's latest explicit instruction.
 - Use `contracts/` for wire shape and cross-app semantics.
-- Use `game-data/` for implemented balance/content values.
+- Use `game-data/` for balance/content contracts. Treat only top-level status `runtime` as loaded implementation; `design-contract` is an accepted target that must be checked against current code.
 - Use `docs/mvp-spec.md` for player-visible requirements and limits.
 - Use `docs/architecture.md` for ownership and invariants.
 - Use `docs/implementation-plan.md` for order and gates, not proof of completion.

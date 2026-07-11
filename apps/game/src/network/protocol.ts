@@ -81,7 +81,7 @@ export interface MatchStartedPayload {
   durationMs: number
   events: SystemEventPayload[]
 }
-export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'boss' | 'end'; title: string; description: string; atMs: number }
+export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'monster_buff' | 'boss' | 'end'; title: string; description: string; atMs: number }
 
 export interface SnapshotPlayer {
   id: string
@@ -123,12 +123,14 @@ export interface SnapshotPickup {
   x: number
   y: number
 }
+export interface SnapshotBeam { id: number; ownerId: string; spellId: string; x: number; y: number; angle: number; length: number; width: number; remainingMs: number }
 
 export interface SnapshotPayload {
   tick: number
   serverTimeMs: number
   players: SnapshotPlayer[]
   monsters: SnapshotMonster[]
+  beams: SnapshotBeam[]
   pickups: SnapshotPickup[]
   team: {
     level: number
@@ -168,7 +170,7 @@ export interface ErrorPayload {
   message: string
 }
 
-export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions'
+export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration'
 export interface UpgradeAppliedPayload {
   playerId: string
   source: 'level_up' | 'treasure_chest'
@@ -362,6 +364,8 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.u16(monster.hp)
     writer.u16(monster.maxHp)
   }
+  writer.u16(payload.beams.length)
+  for (const beam of payload.beams) { writer.u32(beam.id); writer.string(beam.ownerId); writer.string(beam.spellId); writer.f32(beam.x); writer.f32(beam.y); writer.f32(beam.angle); writer.f32(beam.length); writer.f32(beam.width); writer.u32(beam.remainingMs) }
   writer.u16(payload.pickups.length)
   for (const pickup of payload.pickups) {
     writer.u32(pickup.id)
@@ -424,7 +428,7 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
   }
 }
 
-const upgradeAttributes = new Set<UpgradeAttribute>(['max_health', 'armor', 'movement_speed', 'health_regeneration', 'attack_buff', 'cooldown', 'spell_damage', 'projectile_speed', 'spell_burst', 'spell_directions'])
+const upgradeAttributes = new Set<UpgradeAttribute>(['max_health', 'armor', 'movement_speed', 'health_regeneration', 'attack_buff', 'cooldown', 'spell_damage', 'projectile_speed', 'spell_burst', 'spell_directions', 'beam_length', 'beam_width', 'spell_duration'])
 
 function decodeRoomState(reader: BinaryReader): RoomStatePayload {
   const status = decodeRoomStatus(reader.u8())
@@ -463,7 +467,7 @@ function decodeMatchStarted(reader: BinaryReader): MatchStartedPayload {
   const events: SystemEventPayload[] = []
   for (let index = 0; index < eventCount; index += 1) {
     const id = reader.string(), type = reader.string(), title = reader.string(), description = reader.string(), atMs = reader.u32()
-    if (type !== 'spawn_rate' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
+    if (type !== 'spawn_rate' && type !== 'monster_buff' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
     events.push({ id, type, title, description, atMs })
   }
   return { roomName, mapId, mapWidth, mapHeight, startedAtMs, obstacles, durationMs, events }
@@ -505,6 +509,9 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     if (typeId !== 'slime-stage-1' && typeId !== 'slime-stage-2' && typeId !== 'slime-stage-3') throw new Error(`Unknown monster type: ${typeId}`)
     monsters.push({ id, x, y, typeId, hp: reader.u16(), maxHp: reader.u16() })
   }
+  const beamCount = reader.u16()
+  const beams: SnapshotBeam[] = []
+  for (let index = 0; index < beamCount; index += 1) beams.push({ id: reader.u32(), ownerId: reader.string(), spellId: reader.string(), x: reader.f32(), y: reader.f32(), angle: reader.f32(), length: reader.f32(), width: reader.f32(), remainingMs: reader.u32() })
   const pickupCount = reader.u16()
   if (pickupCount > 2048) throw new Error(`Pickup count exceeds limit: ${pickupCount}`)
   const pickups: SnapshotPickup[] = []
@@ -516,6 +523,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     serverTimeMs,
     players,
     monsters,
+    beams,
     pickups,
     team: {
       level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(),

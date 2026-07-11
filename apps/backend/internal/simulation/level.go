@@ -4,6 +4,7 @@ import "time"
 
 type SpellDefinition struct {
 	ID              string
+	Kind            string
 	Damage          int
 	Cooldown        time.Duration
 	ProjectileSpeed float64
@@ -11,6 +12,10 @@ type SpellDefinition struct {
 	Radius          float64
 	Burst           int
 	Directions      int
+	BeamLength      float64
+	BeamWidth       float64
+	Duration        time.Duration
+	DamageInterval  time.Duration
 }
 
 type CharacterDefinition struct {
@@ -50,6 +55,11 @@ type SpawnRateDefinition struct {
 	Entries       []SpawnEntry
 }
 
+type MonsterBuffDefinition struct {
+	HealthMultiplier float64
+	SpeedMultiplier  float64
+}
+
 type LevelEvent struct {
 	ID          string
 	At          time.Duration
@@ -57,6 +67,7 @@ type LevelEvent struct {
 	Title       string
 	Description string
 	SpawnRate   *SpawnRateDefinition
+	MonsterBuff *MonsterBuffDefinition
 	EnemyID     string
 }
 
@@ -71,11 +82,13 @@ type LevelDefinition struct {
 }
 
 var spells = map[string]SpellDefinition{
-	"fireball": {ID: "fireball", Damage: 20, Cooldown: 750 * time.Millisecond, ProjectileSpeed: 700, Range: 700, Radius: 10, Burst: 1, Directions: 1},
+	"fireball":   {ID: "fireball", Kind: "projectile", Damage: 20, Cooldown: 750 * time.Millisecond, ProjectileSpeed: 700, Range: 700, Radius: 10, Burst: 1, Directions: 1},
+	"soul-track": {ID: "soul-track", Kind: "beam", Damage: 18, Cooldown: 1500 * time.Millisecond, Range: 520, Radius: 16, Burst: 1, Directions: 1, BeamLength: 520, BeamWidth: 32, Duration: time.Second, DamageInterval: 500 * time.Millisecond},
 }
 
 var characters = map[string]CharacterDefinition{
-	"ranger": {ID: "ranger", Name: "Ranger", SpriteID: "character-ranger", MaxHP: 100, MovementSpeed: 220, PickupRadius: 120, BaseSpellID: "fireball"},
+	"ranger":  {ID: "ranger", Name: "Ranger", SpriteID: "character-ranger", MaxHP: 100, MovementSpeed: 220, PickupRadius: 120, BaseSpellID: "fireball"},
+	"frieren": {ID: "frieren", Name: "Frieren", SpriteID: "character-frieren", MaxHP: 90, MovementSpeed: 210, PickupRadius: 125, BaseSpellID: "soul-track"},
 }
 
 var enemies = map[string]EnemyDefinition{
@@ -92,6 +105,8 @@ var levelOne = LevelDefinition{
 	Events: []LevelEvent{
 		{ID: "opening-slimes", At: 0, Type: "spawn_rate", Title: "Slimes emerge", Description: "Small Slimes begin surrounding the squad.", SpawnRate: &SpawnRateDefinition{RatePerSecond: 1, MaxLiving: 60, Entries: []SpawnEntry{{EnemyID: "slime-stage-1", Weight: 100}}}},
 		{ID: "greater-slimes", At: time.Minute, Type: "spawn_rate", Title: "Greater Slimes", Description: "Normal spawns switch to faster, tougher Greater Slimes.", SpawnRate: &SpawnRateDefinition{RatePerSecond: 1.8, MaxLiving: 110, Entries: []SpawnEntry{{EnemyID: "slime-stage-2", Weight: 100}}}},
+		{ID: "slime-surge", At: 3 * time.Minute, Type: "monster_buff", Title: "Slime Surge", Description: "All Slimes gain 50% health and 20% movement speed.", MonsterBuff: &MonsterBuffDefinition{HealthMultiplier: 1.5, SpeedMultiplier: 1.2}},
+		{ID: "slime-swarm", At: 4 * time.Minute, Type: "spawn_rate", Title: "Slime Swarm", Description: "Greater Slimes emerge more rapidly.", SpawnRate: &SpawnRateDefinition{RatePerSecond: 2.4, MaxLiving: 150, Entries: []SpawnEntry{{EnemyID: "slime-stage-2", Weight: 100}}}},
 		{ID: "slime-king", At: 5 * time.Minute, Type: "boss", Title: "Slime King", Description: "The Slime King enters the meadow.", EnemyID: "slime-stage-3"},
 		{ID: "level-complete", At: 6 * time.Minute, Type: "end", Title: "Dawn", Description: "The run ends and the final score is calculated."},
 	},
@@ -108,6 +123,8 @@ func CharacterByID(id string) (CharacterDefinition, bool) {
 	value, ok := characters[id]
 	return value, ok
 }
-func AvailableCharacters() []CharacterDefinition  { return []CharacterDefinition{characters["ranger"]} }
+func AvailableCharacters() []CharacterDefinition {
+	return []CharacterDefinition{characters["ranger"], characters["frieren"]}
+}
 func SpellByID(id string) (SpellDefinition, bool) { value, ok := spells[id]; return value, ok }
 func EnemyByID(id string) (EnemyDefinition, bool) { value, ok := enemies[id]; return value, ok }

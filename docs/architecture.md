@@ -13,7 +13,7 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 - `GameBridge` carries typed commands and UI events without DOM access from Phaser or Phaser-internal inspection from React.
 - Create the Phaser instance once on gameplay entry and destroy it, listeners included, when leaving the room.
 
-`GameScene` renders server snapshots and events. It predicts only the local player's movement, reconciles to authoritative snapshots, and interpolates remote entities. React and Phaser share session state through `GameBridge`; the bridge exposes the latest touch movement vector without publishing it through React HUD state.
+`GameScene` renders server snapshots and events. It predicts only the local player's movement, reconciles to authoritative snapshots, and interpolates remote entities. Moving projectiles remain spawn/remove-event driven. Low-count lingering beams are authoritative geometry in snapshots so late joiners see active beams; the server owns segment collision and per-enemy damage intervals. React and Phaser share session state through `GameBridge`; the bridge exposes the latest touch movement vector without publishing it through React HUD state.
 
 Routes:
 
@@ -72,7 +72,9 @@ The browser sets `binaryType = "arraybuffer"` and decodes frames directly with `
 
 ## Content
 
-The server validates `game-data/` at startup and fails fast for duplicate IDs, missing references/assets, unsupported effects, invalid finite/range values, invalid spawn points, or out-of-bounds obstacles. `/api/v1/content/manifest` exposes only public client data.
+The target content model is one global glossary covering attributes, modifiers, characters, spells, buffs, enemies, levels/events, and future artifacts. Each player has five spell slots and five buff slots. Spell/buff levels resolve through the shared modifier engine; clients never calculate authoritative inventory effects.
+
+`game-data/game.json` is currently marked `design-contract`. The server must strictly decode and validate it before its status becomes `runtime` and before the existing Go literals are removed. Validation fails fast for duplicate IDs, missing references/assets, unsupported attributes/operations/targets, invalid progression, invalid finite/range values, invalid spawn points, or out-of-bounds obstacles. Public endpoints expose selection-safe data only.
 
 ## Deployment evolution
 

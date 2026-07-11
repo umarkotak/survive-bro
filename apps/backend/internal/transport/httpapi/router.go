@@ -91,7 +91,7 @@ func (h *Handler) listCharacters(c fiber.Ctx) error {
 	items := make([]fiber.Map, 0)
 	for _, character := range simulation.AvailableCharacters() {
 		spell, _ := simulation.SpellByID(character.BaseSpellID)
-		items = append(items, fiber.Map{"id": character.ID, "name": character.Name, "spriteId": character.SpriteID, "maxHp": character.MaxHP, "armorPercent": character.ArmorPercent, "movementSpeed": character.MovementSpeed, "healthRegeneration": character.HealthRegeneration, "attackBuffPercent": character.AttackBuffPercent, "cooldownPercent": character.CooldownPercent, "baseSpell": fiber.Map{"id": spell.ID, "damage": spell.Damage, "cooldownMs": spell.Cooldown.Milliseconds(), "projectileSpeed": spell.ProjectileSpeed, "burst": spell.Burst, "directions": spell.Directions}})
+		items = append(items, fiber.Map{"id": character.ID, "name": character.Name, "spriteId": character.SpriteID, "maxHp": character.MaxHP, "armorPercent": character.ArmorPercent, "movementSpeed": character.MovementSpeed, "healthRegeneration": character.HealthRegeneration, "attackBuffPercent": character.AttackBuffPercent, "cooldownPercent": character.CooldownPercent, "baseSpell": fiber.Map{"id": spell.ID, "kind": spell.Kind, "damage": spell.Damage, "cooldownMs": spell.Cooldown.Milliseconds(), "projectileSpeed": spell.ProjectileSpeed, "burst": spell.Burst, "directions": spell.Directions, "beamLength": spell.BeamLength, "beamWidth": spell.BeamWidth, "durationMs": spell.Duration.Milliseconds(), "damageIntervalMs": spell.DamageInterval.Milliseconds()}})
 	}
 	return c.JSON(fiber.Map{"characters": items})
 }

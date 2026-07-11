@@ -137,6 +137,18 @@ type SnapshotMonster struct {
 	MaxHP  int     `json:"maxHp"`
 }
 
+type SnapshotBeam struct {
+	ID          uint64  `json:"id"`
+	OwnerID     string  `json:"ownerId"`
+	SpellID     string  `json:"spellId"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Angle       float64 `json:"angle"`
+	Length      float64 `json:"length"`
+	Width       float64 `json:"width"`
+	RemainingMs int64   `json:"remainingMs"`
+}
+
 type SnapshotPickup struct {
 	ID   uint64  `json:"id"`
 	Kind string  `json:"kind"`
@@ -158,6 +170,7 @@ type SnapshotPayload struct {
 	ServerTimeMs int64             `json:"serverTimeMs"`
 	Players      []SnapshotPlayer  `json:"players"`
 	Monsters     []SnapshotMonster `json:"monsters"`
+	Beams        []SnapshotBeam    `json:"beams"`
 	Pickups      []SnapshotPickup  `json:"pickups"`
 	Team         SnapshotTeam      `json:"team"`
 	RemainingMs  int64             `json:"remainingMs"`

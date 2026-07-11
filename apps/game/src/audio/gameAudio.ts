@@ -23,6 +23,11 @@ class GameAudio {
     this.tone({ frequency: 310, endFrequency: 150, duration: 0.11, volume: 0.035, type: 'sawtooth' })
   }
 
+  soulTrack(): void {
+    this.tone({ frequency: 760, endFrequency: 260, duration: 0.28, volume: 0.045, type: 'sawtooth' })
+    this.tone({ frequency: 980, endFrequency: 520, duration: 0.42, volume: 0.025, type: 'sine', delay: 0.04 })
+  }
+
   damage(): void {
     this.tone({ frequency: 120, endFrequency: 70, duration: 0.15, volume: 0.055, type: 'square' })
   }

@@ -11,6 +11,7 @@ import type {
   ProjectileSpawnedPayload,
   RoomStatePayload,
   SnapshotMonster,
+  SnapshotBeam,
   SnapshotPayload,
   SnapshotPickup,
   SnapshotPlayer,
@@ -54,6 +55,7 @@ interface ProjectileView {
   velocityX: number
   velocityY: number
 }
+interface BeamView { shape: Phaser.GameObjects.Rectangle }
 
 interface PickupView {
   sprite: Phaser.GameObjects.Image
@@ -81,6 +83,7 @@ export class GameScene extends Phaser.Scene {
   private readonly monsters = new Map<number, MonsterView>()
   private readonly pickups = new Map<number, PickupView>()
   private readonly projectiles = new Map<number, ProjectileView>()
+  private readonly beams = new Map<number, BeamView>()
   private readonly pickupAbsorptions: PickupAbsorption[] = []
   private readonly obstacleSprites: Phaser.GameObjects.Image[] = []
   private obstacles: MatchStartedPayload['obstacles'] = []
@@ -176,6 +179,8 @@ export class GameScene extends Phaser.Scene {
     this.pickupAbsorptions.length = 0
     for (const projectile of this.projectiles.values()) projectile.sprite.destroy()
     this.projectiles.clear()
+    for (const beam of this.beams.values()) beam.shape.destroy()
+    this.beams.clear()
     this.obstacles = payload.obstacles
     this.cameras.main.setBounds(0, 0, payload.mapWidth, payload.mapHeight)
     for (const obstacle of payload.obstacles) {
@@ -223,6 +228,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.syncMonsters(snapshot.monsters)
+    this.syncBeams(snapshot.beams)
     this.syncPickups(snapshot.pickups)
     this.updateCameraTarget(snapshot.players)
 
@@ -531,6 +537,24 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private syncBeams(beams: SnapshotBeam[]): void {
+    const active = new Set(beams.map((beam) => beam.id))
+    for (const beam of beams) {
+      let view = this.beams.get(beam.id)
+      if (!view) {
+        view = { shape: this.add.rectangle(beam.x, beam.y, beam.length, beam.width, 0xb8f3ff, 0.72).setOrigin(0, 0.5).setStrokeStyle(2, 0xffffff, 0.88).setBlendMode(Phaser.BlendModes.ADD) }
+        this.beams.set(beam.id, view)
+        const owner = this.players.get(beam.ownerId)
+        if (owner) owner.attackUntil = this.time.now + Math.min(beam.remainingMs, 1000)
+        if (beam.ownerId === this.session.network.playerId) gameAudio.soulTrack()
+      }
+      view.shape.setPosition(beam.x, beam.y).setRotation(beam.angle).setDisplaySize(beam.length, beam.width).setDepth(beam.y + 1)
+    }
+    for (const [id, view] of this.beams) {
+      if (!active.has(id)) { view.shape.destroy(); this.beams.delete(id) }
+    }
+  }
+
   private syncPickups(pickups: SnapshotPickup[]): void {
     const active = new Set(pickups.map((pickup) => pickup.id))
     for (const pickup of pickups) {
@@ -581,6 +605,8 @@ export class GameScene extends Phaser.Scene {
   private cleanup(): void {
     this.session.bridge.setVirtualMovement(0, 0)
     this.lastLocalHP = null
+    for (const beam of this.beams.values()) beam.shape.destroy()
+    this.beams.clear()
     for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
     this.pickupAbsorptions.length = 0
     this.unsubscribeNetwork?.()

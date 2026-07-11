@@ -57,6 +57,13 @@ Friendly fire, player collision, revive, and pause are disabled. Dead players ca
 - Target nearest enemy; each trajectory is straight and non-homing.
 - Remove on enemy hit, obstacle hit, or maximum range.
 
+### Frieren
+
+- HP `90`, speed `210`, pickup radius `125`, weapon `soul-track`.
+- Soul Track is a server-authoritative beam: damage `18`, cooldown `1500 ms`, length `520`, width `32`, linger `1000 ms`, damage interval `500 ms`, directions `1`.
+- Every enemy overlapping the beam is damaged independently on its contact interval. The beam is replicated as active geometry in snapshots; the client does not report hits.
+- Deterministic spell levels improve length, cooldown, linger duration, width, directions, then damage.
+
 ### Guardian
 
 - HP `140`, speed `180`, pickup radius `100`, weapon `guardian_pulse`.
@@ -90,19 +97,24 @@ All source sprites face right. Horizontal movement sets facing; vertical movemen
 | Match time | Base rate | Maximum living |
 | --- | ---: | ---: |
 | 0:00–1:00 | 1.0/sec | 60 |
-| 1:00–2:30 | 1.8/sec | 110 |
-| 2:30–4:00 | 2.7/sec | 170 |
-| 4:00–5:00 | 3.5/sec | 240 |
+| 1:00–4:00 | 1.8/sec | 110 |
+| 4:00–5:00 | 2.4/sec | 150 |
+
+At `3:00`, existing and future enemies receive a persistent `1.5×` HP multiplier and `1.2×` movement-speed multiplier. This also applies to the Slime King spawned at `5:00`.
 
 ## Experience and upgrades
 
-Experience and team level are shared. Threshold: `round(8 + 5 * level^1.45)`. Attributes are individual. On every team level, each player receives one independently random eligible upgrade. A power crate gives one random eligible upgrade only to its collector. Gameplay never pauses.
+Experience and team level are shared. Threshold: `round(8 + 5 * level^1.45)`. Attributes are individual. On every team level, each player receives one independently random eligible upgrade. When any living player collects a power crate, every player receives one independently random eligible treasure upgrade. Gameplay never pauses.
 
 XP crystals inside the fixed `120`-unit pickup radius move toward the nearest living player at `900` units/second and collect at `32` units. Every twelfth team kill drops a power crate.
 
 Random effects are: max health `+20` and heal `20`; armor `+5` percentage points (cap `60%`); movement speed `+8%` base (cap `+80%`); regeneration `+1 HP/s`; attack buff `+10%`; cooldown reduction `+8` percentage points (cap `60%`); Fireball damage `+4`; projectile speed `+70`; burst `+1` (cap `2`); or directions `+1` (cap `4`). Capped upgrades are removed from the eligible roll.
 
 Every applied personal upgrade emits an authoritative event identifying whether it came from a team level-up or treasure chest. The owning client shows a temporary top-centre notification and keeps an in-memory history for the current run.
+
+### Inventory target
+
+The accepted replacement for direct random attribute upgrades is a player inventory with at most five spells and five buffs. Ranger starts with Fireball level 1. A level-up or treasure reward adds an eligible unowned entry at level 1 or increases an owned entry by one deterministic level. Full inventories exclude unowned entries; max-level entries are excluded. Detailed modifier ordering and the runtime migration gate live in `inventory-and-modifiers.md`. Until that gate lands, the existing direct random attribute implementation remains the current runtime behavior.
 
 ## Reliability and security
 
@@ -121,4 +133,4 @@ Return survival time, team level, total kills, and per-player damage dealt, dama
 
 ## Explicit non-goals
 
-Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, chat, PvP, gamepads, additional maps, unlocks, cosmetics, inventory, equipment, procedural maps, bosses, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.
+Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, chat, PvP, gamepads, additional maps, unlocks, cosmetics, equipment, procedural maps, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.

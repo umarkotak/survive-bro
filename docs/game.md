@@ -7,6 +7,7 @@
 - React 19.2.7, TypeScript 7.0.2, Vite 8.1.4, and Phaser exactly `4.2.1`.
 - Node 24 declarations through `.node-version`, `.nvmrc`, and package engines.
 - Local-storage username setup followed by a live room browser, join actions, and a generated five-letter create-room modal.
+- Data-driven character selection currently offers Ranger/Fireball and Frieren/Soul Track with separate sprite sets and starting stats.
 - One `MultiplayerSession`, WebSocket, and `GameCanvas` per gameplay entry with complete cleanup on leave.
 - Dependency-free binary WebSocket v2 codec using `ArrayBuffer` and `DataView`; realtime messages never pass through JSON.
 - Responsive Meadow arena at 3200 x 1800 world units rendering authoritative players, three Slime stages, pickups, projectiles, and scored results.

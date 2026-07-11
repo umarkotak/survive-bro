@@ -11,6 +11,7 @@ const (
 	maxDecodedPlayers   = 6
 	maxDecodedObstacles = 256
 	maxDecodedMonsters  = 1024
+	maxDecodedBeams     = 64
 	maxDecodedPickups   = 2048
 )
 
@@ -503,6 +504,33 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		e.u16(hp)
 		e.u16(maxHP)
 	}
+	if len(value.Beams) > math.MaxUint16 {
+		return fmt.Errorf("beam count exceeds 65535")
+	}
+	e.u16(uint16(len(value.Beams)))
+	for _, beam := range value.Beams {
+		id, err := uint32Value(beam.ID, "beam ID")
+		if err != nil {
+			return err
+		}
+		e.u32(id)
+		if err := e.string(beam.OwnerID); err != nil {
+			return err
+		}
+		if err := e.string(beam.SpellID); err != nil {
+			return err
+		}
+		for _, field := range []float64{beam.X, beam.Y, beam.Angle, beam.Length, beam.Width} {
+			if err := e.f32(field); err != nil {
+				return err
+			}
+		}
+		remaining, err := nonNegativeUint32(beam.RemainingMs, "beam remaining ms")
+		if err != nil {
+			return err
+		}
+		e.u32(remaining)
+	}
 	if len(value.Pickups) > math.MaxUint16 {
 		return fmt.Errorf("pickup count exceeds 65535")
 	}
@@ -966,6 +994,40 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		}
 		monsters = append(monsters, SnapshotMonster{ID: uint64(id), TypeID: typeID, X: x, Y: y, HP: int(hp), MaxHP: int(maxHP)})
 	}
+	beamCount, err := d.u16()
+	if err != nil {
+		return SnapshotPayload{}, err
+	}
+	if beamCount > maxDecodedBeams {
+		return SnapshotPayload{}, fmt.Errorf("beam count %d exceeds limit", beamCount)
+	}
+	beams := make([]SnapshotBeam, 0, beamCount)
+	for range beamCount {
+		id, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		ownerID, err := d.string()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		spellID, err := d.string()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		values := make([]float64, 5)
+		for index := range values {
+			values[index], err = d.f32()
+			if err != nil {
+				return SnapshotPayload{}, err
+			}
+		}
+		remaining, err := d.u32()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		beams = append(beams, SnapshotBeam{ID: uint64(id), OwnerID: ownerID, SpellID: spellID, X: values[0], Y: values[1], Angle: values[2], Length: values[3], Width: values[4], RemainingMs: int64(remaining)})
+	}
 	pickupCount, err := d.u16()
 	if err != nil {
 		return SnapshotPayload{}, err
@@ -1018,7 +1080,7 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		return SnapshotPayload{}, err
 	}
 	return SnapshotPayload{
-		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Pickups: pickups,
+		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Beams: beams, Pickups: pickups,
 		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills)},
 		RemainingMs: int64(remaining),
 	}, nil

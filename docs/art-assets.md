@@ -65,6 +65,16 @@ Behavior:
 | Attack 1 | `public/assets/character-ranger-attack-1.png` | 256 x 256 |
 | Selection portrait | `public/assets/character-ranger-portrait.png` | 256 x 256 |
 
+### Frieren
+
+| ID | Location | Canvas |
+| --- | --- | ---: |
+| Idle | `public/assets/character-frieren-idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character-frieren-walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character-frieren-walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character-frieren-walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character-frieren-attack-1.png` | 256 x 256 |
+
 ### Level 1 Slimes
 
 | ID | Location | Canvas |

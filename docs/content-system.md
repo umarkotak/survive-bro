@@ -1,6 +1,6 @@
 # Game Content System
 
-This is the central extension model for gameplay content. Implemented definitions live in `apps/backend/internal/simulation/level.go`; the server is authoritative and exposes safe selection metadata over HTTP.
+This is the central extension model for gameplay content. The global glossary and target content shape live in `game-data/game.json`; inventory and modifier semantics live in `inventory-and-modifiers.md`. The JSON is currently a design contract while implemented runtime definitions remain in `apps/backend/internal/simulation/level.go`. The migration checkpoint must remove those Go literals before the JSON is declared runtime-authoritative.
 
 ## Stable content boundaries
 
@@ -10,7 +10,15 @@ A character owns a stable ID, display name, sprite-set ID, starting max health, 
 
 ### Spell
 
-A spell owns damage, cooldown, projectile speed, range, radius, burst, and directions. A character references one base spell. Personal upgrades modify the player-owned resolved copy, never the shared definition.
+A spell owns an attack type plus its relevant attributes. `projectile` spells use speed/range/radius; `beam` spells use length/width/linger/damage interval. Both may use damage, cooldown, and directions. A character references one base spell. Personal upgrades modify the player-owned resolved copy, never the shared definition.
+
+### Buff
+
+A buff is an inventory item that references reusable modifiers affecting the player, one spell, matching spells, or their projectiles. Buffs and spells have independent five-slot inventories and deterministic levels.
+
+### Modifier
+
+A modifier targets one glossary attribute through a stable operation. The same engine is shared by spell levels, buffs, and future artifacts.
 
 ### Enemy
 
@@ -25,6 +33,7 @@ A level owns its ID, name, duration, terrain asset IDs, obstacle asset IDs/layou
 Every event has a stable ID, timestamp, type, title, and player-facing description. The initial supported types are:
 
 - `spawn_rate`: replaces the active normal-spawn configuration. It independently controls rate per second, maximum living enemies, and weighted enemy composition.
+- `monster_buff`: multiplies health and movement speed for existing enemies and all enemies spawned afterward.
 - `boss`: spawns one enemy type without changing the normal spawn configuration.
 - `end`: resolves the match and score.
 

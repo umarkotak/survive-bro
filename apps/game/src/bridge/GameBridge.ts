@@ -27,6 +27,9 @@ export interface GameHudState {
   roomName: string
   playerId: string
   displayName: string
+  characterId: string
+  characterName: string
+  spellId: string
   armorPercent: number
   movementSpeed: number
   healthRegeneration: number
@@ -51,6 +54,11 @@ export interface GameHudState {
   baseProjectileSpeed: number
   baseSpellBurst: number
   baseSpellDirections: number
+  baseSpellCooldownMs: number
+  beamLength: number
+  beamWidth: number
+  spellDurationMs: number
+  damageIntervalMs: number
   diagnostics: GameDiagnostics
 }
 
@@ -69,6 +77,9 @@ const initialState: GameHudState = {
   roomName: '',
   playerId: '',
   displayName: '',
+  characterId: 'ranger',
+  characterName: 'Ranger',
+  spellId: 'fireball',
   armorPercent: 0,
   movementSpeed: 220,
   healthRegeneration: 0,
@@ -86,6 +97,7 @@ const initialState: GameHudState = {
   baseMaxHp: 100, baseArmorPercent: 0, baseMovementSpeed: 220, baseHealthRegeneration: 0,
   baseAttackBuffPercent: 0, baseCooldownPercent: 0, baseSpellDamage: 20, baseProjectileSpeed: 700,
   baseSpellBurst: 1, baseSpellDirections: 1,
+  baseSpellCooldownMs: 750, beamLength: 0, beamWidth: 0, spellDurationMs: 0, damageIntervalMs: 0,
   diagnostics: {
     fps: 0,
     activeSprites: 0,

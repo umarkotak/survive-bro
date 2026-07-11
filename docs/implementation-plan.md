@@ -29,6 +29,20 @@ This checkpoint does not complete the milestones below. Guardian selection, upgr
 
 ## Hybrid simulation checkpoint roadmap
 
+## Inventory and global-data migration checkpoint
+
+This checkpoint precedes additional spells, buffs, or artifacts:
+
+1. Freeze the schema and glossary in `game-data/game.json`.
+2. Add strict Sonic decoding, cross-reference validation, deterministic modifier ordering, and startup failure for invalid data.
+3. Replace Go content literals and mark the JSON status `runtime` in the same change.
+4. Add authoritative player inventory state with five spell and five buff slots.
+5. Replace direct random attribute rolls with add-item or level-item rewards.
+6. Extend binary snapshots/events and add React inventory presentation.
+7. Manually verify empty slots, full inventories, max levels, Fireball progression, level rewards, treasure rewards, reconnect/reset behavior, and modifier totals.
+
+Do not add a second spell or artifact before steps 1–3 remove the duplicate runtime definitions.
+
 | Checkpoint | Status | Manual gate |
 | --- | --- | --- |
 | 1. Observability baseline | Implemented; awaiting owner verification | Four clients expose server phase/entity/queue metrics and client `?debug=1` diagnostics sufficient to classify lag. |
