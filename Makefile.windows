@@ -1,0 +1,35 @@
+.PHONY: backend-format backend-run backend-test backend-race backend-bench game-dev game-typecheck game-test game-build
+
+SHELL := cmd.exe
+.SHELLFLAGS := /C
+
+BACKEND_DIR := $(CURDIR)\apps\backend
+BACKEND_GOCACHE := $(BACKEND_DIR)\.gocache
+GAME_DIR := $(CURDIR)\apps\game
+
+backend-format:
+	cd /d "$(BACKEND_DIR)" && gofmt -w cmd internal
+
+backend-run:
+	cd /d "$(BACKEND_DIR)" && set "GOCACHE=$(BACKEND_GOCACHE)" && go run ./cmd/game-server
+
+backend-test:
+	cd /d "$(BACKEND_DIR)" && set "GOCACHE=$(BACKEND_GOCACHE)" && go test ./...
+
+backend-race:
+	cd /d "$(BACKEND_DIR)" && set "GOCACHE=$(BACKEND_GOCACHE)" && go test -race ./...
+
+backend-bench:
+	cd /d "$(BACKEND_DIR)" && set "GOCACHE=$(BACKEND_GOCACHE)" && go test ./internal/protocol -run "^$$" -bench "Benchmark(Encode|Decode)Snapshot(Binary|SonicJSON)$$" -benchmem
+
+game-dev:
+	cd /d "$(GAME_DIR)" && bun run dev
+
+game-typecheck:
+	cd /d "$(GAME_DIR)" && bun run typecheck
+
+game-test:
+	cd /d "$(GAME_DIR)" && bun run test
+
+game-build:
+	cd /d "$(GAME_DIR)" && bun run build
