@@ -23,7 +23,7 @@ import (
 func testConfig() config.Config {
 	return config.Config{
 		HTTPAddress:             ":0",
-		AllowedOrigins:          []string{"http://localhost:3702", "http://127.0.0.1:3702", "https://survive-bro-dev.cabocil.com"},
+		AllowedOrigins:          []string{"http://localhost:3702", "http://127.0.0.1:3702", "https://survive-bro-dev.cabocil.com", "https://survive-bro.cabocil.com"},
 		RoomTTL:                 time.Minute,
 		JoinTimeout:             250 * time.Millisecond,
 		ShutdownTimeout:         time.Second,

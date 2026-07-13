@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>survive-bro-api</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/umar/umar/personal_projects/survive-bro/apps/backend/survive-bro-api</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/umar/umar/personal_projects/survive-bro/apps/backend</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+
+        <key>HOME</key>
+        <string>/Users/umar</string>
+
+        <key>GAME_DATA_PATH</key>
+        <string>/Users/umar/umar/personal_projects/survive-bro/game-data/game.json</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/umar/umar/personal_projects/survive-bro/apps/backend/survive-bro-api.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/umar/umar/personal_projects/survive-bro/apps/backend/survive-bro-api.error.log</string>
+</dict>
+</plist>

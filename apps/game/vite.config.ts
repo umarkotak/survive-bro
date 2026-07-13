@@ -3,7 +3,7 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-const allowedHosts = ['survive-bro-dev.cabocil.com']
+const allowedHosts = ['survive-bro-dev.cabocil.com', 'survive-bro.cabocil.com']
 
 export default defineConfig({
   plugins: [react()],

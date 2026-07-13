@@ -48,7 +48,7 @@ Default address: `:3701`.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HTTP_ADDRESS` | `:3701` | Listen address |
-| `ALLOWED_ORIGINS` | `http://localhost:3702,http://127.0.0.1:3702,https://survive-bro-dev.cabocil.com` | Comma-separated exact WebSocket origins |
+| `ALLOWED_ORIGINS` | `http://localhost:3702,http://127.0.0.1:3702,https://survive-bro-dev.cabocil.com,https://survive-bro.cabocil.com` | Comma-separated exact WebSocket origins |
 | `ROOM_TTL` | `10m` | Empty-lobby lifetime |
 | `WS_JOIN_TIMEOUT` | `5s` | Time allowed for the first `join_room` message |
 | `SHUTDOWN_TIMEOUT` | `10s` | Drain deadline |
