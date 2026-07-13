@@ -2,10 +2,12 @@
 .env
 .env.*
 !.env.example
+.run/
 
 apps/backend/.gocache/
 apps/backend/bin/
 apps/backend/coverage.out
+apps/backend/survive-bro-api
 
 apps/game/node_modules/
 apps/game/dist/
