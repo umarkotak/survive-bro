@@ -388,7 +388,6 @@ export class GameScene extends Phaser.Scene {
         Phaser.Math.Linear(view.sprite.y, view.targetY, blend),
       )
       if (view.kind === 'experience') {
-        view.sprite.rotation += seconds * (distance > 4 ? 8 : 2)
         const pulse = 1 + Math.sin(time / 130) * 0.08
         view.sprite.setScale(distance > 4 ? pulse * 1.2 : pulse)
       } else {
