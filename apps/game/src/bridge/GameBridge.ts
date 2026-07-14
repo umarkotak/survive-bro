@@ -28,6 +28,7 @@ export interface GameHudState {
   bosses: BossHudState[]
   playerCount: number
   roomName: string
+  levelId: string
   playerId: string
   displayName: string
   characterId: string
@@ -46,6 +47,7 @@ export interface GameHudState {
   outcome: MatchOutcome
   score: number
   levelDurationMs: number
+  upgradePaused: boolean
   timelineEvents: SystemEventPayload[]
   baseMaxHp: number
   baseArmorPercent: number
@@ -82,6 +84,7 @@ const initialState: GameHudState = {
   bosses: [],
   playerCount: 1,
   roomName: '',
+  levelId: '',
   playerId: '',
   displayName: '',
   characterId: 'ranger',
@@ -100,6 +103,7 @@ const initialState: GameHudState = {
   outcome: 'playing',
   score: 0,
   levelDurationMs: 6 * 60 * 1000,
+  upgradePaused: false,
   timelineEvents: [],
   baseMaxHp: 100, baseArmorPercent: 0, baseMovementSpeed: 220, baseHealthRegeneration: 0,
   baseAttackBuffPercent: 0, baseCooldownPercent: 0, baseSpellDamage: 20, baseProjectileSpeed: 700,

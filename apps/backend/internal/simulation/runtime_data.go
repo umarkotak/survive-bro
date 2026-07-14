@@ -192,55 +192,63 @@ func LoadRuntimeGameData(path string) error {
 		}
 		loadedEnemies[id] = EnemyDefinition{ID: id, Name: value.Name, SpriteID: value.Sprite, Score: a.Score, Experience: a.Experience, MaxHP: a.Health, Speed: a.MovementSpeed, Radius: a.CollisionRadius, ContactDamage: a.Damage, Armor: a.Armor, SpellIDs: append([]string(nil), value.SpellIDs...), ContactDelay: time.Duration(a.CooldownMS) * time.Millisecond}
 	}
-	level, ok := source.Levels["level-1"]
-	if !ok || level.DurationMS <= 0 || level.Name == "" {
-		return fmt.Errorf("level-1 is missing or invalid")
-	}
-	events := make([]LevelEvent, 0, len(level.Events))
-	sort.SliceStable(level.Events, func(i, j int) bool { return level.Events[i].AtMS < level.Events[j].AtMS })
-	previousAt := int64(-1)
-	for _, value := range level.Events {
-		if value.ID == "" || value.AtMS < previousAt || value.AtMS > level.DurationMS {
-			return fmt.Errorf("level-1 event %q has invalid ordering or time", value.ID)
+	loadedLevels := make(map[string]LevelDefinition, len(source.Levels))
+	for id, level := range source.Levels {
+		if id == "" || level.DurationMS <= 0 || level.Name == "" {
+			return fmt.Errorf("level %q is invalid", id)
 		}
-		previousAt = value.AtMS
-		event := LevelEvent{ID: value.ID, At: time.Duration(value.AtMS) * time.Millisecond, Type: value.Type, Title: value.Title, Description: value.Description, EnemyID: value.Config.EnemyID, EndMatchOnDeath: value.Config.EndMatchOnDeath, BossCount: max(1, value.Config.Count)}
-		switch value.Type {
-		case "spawn_rate":
-			spawn := &SpawnRateDefinition{RatePerSecond: value.Config.SpawnRate, MaxLiving: value.Config.MaxLiving}
-			for _, entry := range value.Config.Composition {
-				if _, exists := loadedEnemies[entry.EnemyID]; !exists || entry.Weight <= 0 {
-					return fmt.Errorf("event %q has invalid spawn entry", value.ID)
+		events := make([]LevelEvent, 0, len(level.Events))
+		sort.SliceStable(level.Events, func(i, j int) bool { return level.Events[i].AtMS < level.Events[j].AtMS })
+		previousAt := int64(-1)
+		for _, value := range level.Events {
+			if value.ID == "" || value.AtMS < previousAt || value.AtMS > level.DurationMS {
+				return fmt.Errorf("level %q event %q has invalid ordering or time", id, value.ID)
+			}
+			previousAt = value.AtMS
+			event := LevelEvent{ID: value.ID, At: time.Duration(value.AtMS) * time.Millisecond, Type: value.Type, Title: value.Title, Description: value.Description, EnemyID: value.Config.EnemyID, EndMatchOnDeath: value.Config.EndMatchOnDeath, BossCount: max(1, value.Config.Count)}
+			switch value.Type {
+			case "spawn_rate":
+				spawn := &SpawnRateDefinition{RatePerSecond: value.Config.SpawnRate, MaxLiving: value.Config.MaxLiving}
+				for _, entry := range value.Config.Composition {
+					if _, exists := loadedEnemies[entry.EnemyID]; !exists || entry.Weight <= 0 {
+						return fmt.Errorf("event %q has invalid spawn entry", value.ID)
+					}
+					spawn.Entries = append(spawn.Entries, SpawnEntry{EnemyID: entry.EnemyID, Weight: entry.Weight})
 				}
-				spawn.Entries = append(spawn.Entries, SpawnEntry{EnemyID: entry.EnemyID, Weight: entry.Weight})
+				event.SpawnRate = spawn
+			case "monster_buff":
+				event.MonsterBuff = &MonsterBuffDefinition{HealthMultiplier: value.Config.HealthMultiplier, SpeedMultiplier: value.Config.SpeedMultiplier}
+			case "meteor_shower":
+				c := value.Config
+				if c.DurationMS <= 0 || c.RatePerSecond <= 0 || c.WarningMS <= 0 || c.LingerMinMS < 3000 || c.LingerMaxMS < c.LingerMinMS || c.Radius <= 0 || c.Damage <= 0 || c.DamageIntervalMS <= 0 {
+					return fmt.Errorf("event %q has invalid meteor shower values", value.ID)
+				}
+				event.MeteorShower = &MeteorShowerDefinition{Duration: time.Duration(c.DurationMS) * time.Millisecond, RatePerSecond: c.RatePerSecond, Warning: time.Duration(c.WarningMS) * time.Millisecond, LingerMin: time.Duration(c.LingerMinMS) * time.Millisecond, LingerMax: time.Duration(c.LingerMaxMS) * time.Millisecond, Radius: c.Radius, Damage: c.Damage, DamageInterval: time.Duration(c.DamageIntervalMS) * time.Millisecond}
+			case "boss":
+				if _, exists := loadedEnemies[event.EnemyID]; !exists {
+					return fmt.Errorf("event %q references unknown boss", value.ID)
+				}
+				m := value.Config.StatMultipliers
+				event.BossMultipliers = &EnemyStatMultipliers{Health: m.Health, MovementSpeed: m.MovementSpeed, AttackDamage: m.Damage, CollisionRadius: m.CollisionRadius, ContactCooldown: m.ContactCooldown, ExperienceDrop: m.ExperienceDrop, Score: m.Score}
+			case "end":
+			default:
+				return fmt.Errorf("event %q has unsupported type %q", value.ID, value.Type)
 			}
-			event.SpawnRate = spawn
-		case "monster_buff":
-			event.MonsterBuff = &MonsterBuffDefinition{HealthMultiplier: value.Config.HealthMultiplier, SpeedMultiplier: value.Config.SpeedMultiplier}
-		case "meteor_shower":
-			c := value.Config
-			if c.DurationMS <= 0 || c.RatePerSecond <= 0 || c.WarningMS <= 0 || c.LingerMinMS < 3000 || c.LingerMaxMS < c.LingerMinMS || c.Radius <= 0 || c.Damage <= 0 || c.DamageIntervalMS <= 0 {
-				return fmt.Errorf("event %q has invalid meteor shower values", value.ID)
-			}
-			event.MeteorShower = &MeteorShowerDefinition{Duration: time.Duration(c.DurationMS) * time.Millisecond, RatePerSecond: c.RatePerSecond, Warning: time.Duration(c.WarningMS) * time.Millisecond, LingerMin: time.Duration(c.LingerMinMS) * time.Millisecond, LingerMax: time.Duration(c.LingerMaxMS) * time.Millisecond, Radius: c.Radius, Damage: c.Damage, DamageInterval: time.Duration(c.DamageIntervalMS) * time.Millisecond}
-		case "boss":
-			if _, exists := loadedEnemies[event.EnemyID]; !exists {
-				return fmt.Errorf("event %q references unknown boss", value.ID)
-			}
-			m := value.Config.StatMultipliers
-			event.BossMultipliers = &EnemyStatMultipliers{Health: m.Health, MovementSpeed: m.MovementSpeed, AttackDamage: m.Damage, CollisionRadius: m.CollisionRadius, ContactCooldown: m.ContactCooldown, ExperienceDrop: m.ExperienceDrop, Score: m.Score}
-		case "end":
-		default:
-			return fmt.Errorf("event %q has unsupported type %q", value.ID, value.Type)
+			events = append(events, event)
 		}
-		events = append(events, event)
+		if len(events) == 0 {
+			return fmt.Errorf("level %q has no valid events", id)
+		}
+		loadedLevels[id] = LevelDefinition{ID: id, Name: level.Name, Duration: time.Duration(level.DurationMS) * time.Millisecond, TerrainAssetIDs: append([]string(nil), level.TerrainAssets...), ObstacleAssetIDs: append([]string(nil), level.ObstacleAssets...), Obstacles: Obstacles, Events: events}
 	}
-	if len(events) == 0 {
-		return fmt.Errorf("level-1 has no valid events")
+	loadedLevelOne, ok := loadedLevels["level-1"]
+	if !ok {
+		return fmt.Errorf("level-1 is missing")
 	}
 	spells = loadedSpells
 	characters = loadedCharacters
 	enemies = loadedEnemies
-	levelOne = LevelDefinition{ID: "level-1", Name: level.Name, Duration: time.Duration(level.DurationMS) * time.Millisecond, TerrainAssetIDs: append([]string(nil), level.TerrainAssets...), ObstacleAssetIDs: append([]string(nil), level.ObstacleAssets...), Obstacles: Obstacles, Events: events}
+	levelOne = loadedLevelOne
+	levelDefinitions = loadedLevels
 	return nil
 }

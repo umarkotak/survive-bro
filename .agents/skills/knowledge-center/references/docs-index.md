@@ -12,6 +12,8 @@ Paths are relative to the repository root.
 | Milestones, deliverables, tests, acceptance gates | `docs/implementation-plan.md` | Planned work; not completion evidence |
 | Backend setup, environment, routes, and current implementation status | `docs/backend.md` | Implemented backend operating reference |
 | Game setup, offline loop, client boundaries, and current implementation status | `docs/game.md` | Implemented browser-game operating reference |
+| Frontend visual language, responsive composition, routes, and menu media behavior | `docs/ui-design-direction.md` | Accepted UI design direction |
+| Asset folder hierarchy, filenames, frames, dimensions, and future naming contract | `docs/art-assets.md` | Implemented asset manifest |
 | WebSocket envelope, messages, payload evolution | `contracts/websocket-events.md` | Initial shared contract inventory |
 | Global attributes and target content definitions | `game-data/game.json` | Characters, spells, enemies, and levels are generated into and loaded by the server; remaining sections are `design-contract` |
 | Repo-wide agent workflow | `AGENTS.md` | Binding repository instructions |

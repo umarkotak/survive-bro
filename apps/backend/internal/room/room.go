@@ -238,6 +238,9 @@ func (r *Room) run() {
 				}
 				r.broadcastAndPrune(clients, &hostPlayerID, match)
 				r.broadcastSnapshot(clients, match)
+				if match != nil && match.UpgradePhase != nil {
+					r.broadcastUpgradeOffers(clients, match)
+				}
 				if len(clients) == 0 {
 					match = nil
 					expiresAt = r.now().Add(r.ttl)
@@ -288,6 +291,11 @@ func (r *Room) run() {
 			removedSlowClient := false
 			for _, playerID := range r.broadcastSimulationEvents(clients, events) {
 				removedSlowClient = r.removePlayer(clients, &hostPlayerID, match, playerID) || removedSlowClient
+			}
+			if events.UpgradeOffersChanged && match.UpgradePhase != nil {
+				for _, playerID := range r.broadcastUpgradeOffers(clients, match) {
+					removedSlowClient = r.removePlayer(clients, &hostPlayerID, match, playerID) || removedSlowClient
+				}
 			}
 			if removedSlowClient {
 				r.broadcastAndPrune(clients, &hostPlayerID, match)
@@ -390,6 +398,39 @@ func (r *Room) handleMessage(clients map[string]*Player, match *simulation.Match
 		if err := match.ApplyInput(client.ID, payload, r.now()); err != nil {
 			r.sendCritical(clients, client.ID, protocol.Error(command.message.RequestID, "invalid_input", "movement axes must be finite values between -1 and 1"))
 		}
+	case protocol.TypeSelectUpgrade:
+		if match == nil || match.Finished {
+			return ""
+		}
+		var payload protocol.SelectUpgradePayload
+		if err := command.message.DecodePayload(&payload); err != nil {
+			r.sendCritical(clients, client.ID, protocol.Error(command.message.RequestID, "invalid_payload", "upgrade selection payload is invalid"))
+			return ""
+		}
+		events, err := match.SelectUpgrade(client.ID, payload.OfferID, payload.ChoiceIndex)
+		if err != nil {
+			r.sendCritical(clients, client.ID, protocol.Error(command.message.RequestID, "invalid_upgrade", err.Error()))
+			return ""
+		}
+		if slow := r.broadcastSimulationEvents(clients, events); len(slow) > 0 {
+			return slow[0]
+		}
+		if match.UpgradePhase != nil {
+			if slow := r.broadcastUpgradeOffers(clients, match); len(slow) > 0 {
+				return slow[0]
+			}
+		}
+	case protocol.TypeDebugLevelUp:
+		if match == nil || match.Finished {
+			return ""
+		}
+		if err := match.DebugLevelUp(r.now()); err != nil {
+			r.sendCritical(clients, client.ID, protocol.Error(command.message.RequestID, "debug_level_unavailable", err.Error()))
+			return ""
+		}
+		if slow := r.broadcastUpgradeOffers(clients, match); len(slow) > 0 {
+			return slow[0]
+		}
 	case protocol.TypeLeaveRoom:
 		// Transport performs synchronized removal after returning from its read loop.
 	default:
@@ -444,6 +485,13 @@ func (r *Room) broadcastSimulationEvents(clients map[string]*Player, events simu
 			slow[playerID] = struct{}{}
 		}
 	}
+	for start := 0; start < len(events.DamageApplied); start += 256 {
+		end := min(start+256, len(events.DamageApplied))
+		batch := protocol.DamageAppliedBatchPayload{Results: events.DamageApplied[start:end]}
+		for _, playerID := range r.broadcastCritical(clients, protocol.TypeDamageAppliedBatch, batch) {
+			slow[playerID] = struct{}{}
+		}
+	}
 	for _, upgrade := range events.AppliedUpgrades {
 		for _, playerID := range r.broadcastCritical(clients, protocol.TypeUpgradeApplied, upgrade) {
 			slow[playerID] = struct{}{}
@@ -469,6 +517,21 @@ func (r *Room) broadcastCritical(clients map[string]*Player, messageType protoco
 	slow := make([]string, 0)
 	for playerID := range clients {
 		if !r.sendCritical(clients, playerID, envelope) {
+			slow = append(slow, playerID)
+		}
+	}
+	return slow
+}
+
+func (r *Room) broadcastUpgradeOffers(clients map[string]*Player, match *simulation.Match) []string {
+	slow := make([]string, 0)
+	for playerID := range clients {
+		payload, ok := match.UpgradeOfferFor(playerID)
+		if !ok {
+			continue
+		}
+		envelope, err := protocol.NewEnvelope(protocol.TypeUpgradeOffered, "", payload)
+		if err != nil || !r.sendCritical(clients, playerID, envelope) {
 			slow = append(slow, playerID)
 		}
 	}

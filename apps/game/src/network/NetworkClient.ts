@@ -5,6 +5,7 @@ import {
   type Envelope,
   type ErrorPayload,
   type JoinedPayload,
+  type UpgradeAppliedPayload,
 } from './protocol'
 import { joinNetworkUrl, networkConfig } from '../config/network'
 
@@ -132,9 +133,10 @@ export class NetworkClient {
             const error = message.payload as ErrorPayload
             fail(`Game server rejected the WebSocket join [${error.code}]: ${error.message} (${socketUrl})`)
           }
-          if (message.type === 'match_started' || message.type === 'room_state' || message.type === 'snapshot' || message.type === 'match_ended') {
+          if (message.type === 'match_started' || message.type === 'room_state' || message.type === 'snapshot' || message.type === 'match_ended' || message.type === 'upgrade_offered') {
             this.replayMessages.set(message.type, message)
           }
+          if (message.type === 'upgrade_applied' && (message.payload as UpgradeAppliedPayload).playerId === this.playerId) this.replayMessages.delete('upgrade_offered')
           for (const listener of this.messageListeners) listener(message)
         } catch (error) {
           if (!settled) {
@@ -164,7 +166,7 @@ export class NetworkClient {
 
   subscribe(listener: MessageListener): () => void {
     this.messageListeners.add(listener)
-    for (const messageType of ['match_started', 'room_state', 'snapshot', 'match_ended']) {
+    for (const messageType of ['match_started', 'room_state', 'snapshot', 'match_ended', 'upgrade_offered']) {
       const message = this.replayMessages.get(messageType)
       if (message) listener(message)
     }
@@ -184,6 +186,14 @@ export class NetworkClient {
 
   sendInput(sequence: number, moveX: number, moveY: number): void {
     this.send(createEnvelope('input', { sequence, moveX, moveY }))
+  }
+
+  selectUpgrade(offerId: number, choiceIndex: number): void {
+    this.send(createEnvelope('select_upgrade', { offerId, choiceIndex }, this.nextRequestId('upgrade')))
+  }
+
+  debugLevelUp(): void {
+    this.send(createEnvelope('debug_level_up', {}, this.nextRequestId('debug-level')))
   }
 
   close(): void {

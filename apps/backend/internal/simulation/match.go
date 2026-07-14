@@ -11,7 +11,16 @@ import (
 	"survive-bro/apps/backend/internal/protocol"
 )
 
-var ErrInvalidInput = errors.New("movement input is invalid")
+var (
+	ErrInvalidInput      = errors.New("movement input is invalid")
+	ErrNoUpgradePhase    = errors.New("no upgrade phase is active")
+	ErrStaleUpgradeOffer = errors.New("upgrade offer is stale")
+	ErrInvalidUpgrade    = errors.New("upgrade choice is invalid")
+	ErrUpgradeSelected   = errors.New("upgrade choice was already selected")
+	ErrDebugLevelUp      = errors.New("debug level up is unavailable")
+)
+
+const UpgradeSelectionTimeout = 50 * time.Second
 
 type Player struct {
 	ID                     string
@@ -82,7 +91,7 @@ type Monster struct {
 	Score                  int
 	LastContact            map[string]time.Duration
 	SpellIDs               []string
-	LastSpellAt            time.Duration
+	LastSpellAt            map[string]time.Duration
 	AttackDamageMultiplier float64
 }
 
@@ -164,12 +173,26 @@ type ProjectileRemoval struct {
 	Reason string
 }
 
+type PlayerUpgradeOffer struct {
+	Choices       []protocol.UpgradeChoice
+	SelectedIndex int
+}
+
+type UpgradePhase struct {
+	ID       uint64
+	Source   string
+	Deadline time.Time
+	Offers   map[string]*PlayerUpgradeOffer
+}
+
 type Events struct {
-	SpawnedProjectiles []protocol.ProjectileSpawnedPayload
-	RemovedProjectiles []ProjectileRemoval
-	AppliedUpgrades    []protocol.UpgradeAppliedPayload
-	MatchEnded         *protocol.MatchEndedPayload
-	Metrics            TickMetrics
+	SpawnedProjectiles   []protocol.ProjectileSpawnedPayload
+	RemovedProjectiles   []ProjectileRemoval
+	DamageApplied        []protocol.DamageAppliedResult
+	AppliedUpgrades      []protocol.UpgradeAppliedPayload
+	UpgradeOffersChanged bool
+	MatchEnded           *protocol.MatchEndedPayload
+	Metrics              TickMetrics
 }
 
 type TickMetrics struct {
@@ -219,6 +242,8 @@ type Match struct {
 	nextPickupID            uint64
 	rng                     *rand.Rand
 	meteorShowers           []activeMeteorShower
+	UpgradePhase            *UpgradePhase
+	nextUpgradeOfferID      uint64
 }
 
 func NewMatch(startedAt time.Time, seed int64, levels ...LevelDefinition) *Match {
@@ -298,11 +323,20 @@ func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ..
 		LastAttackAt: -spell.Cooldown,
 	}
 	m.Players[id] = player
+	if m.UpgradePhase != nil {
+		m.UpgradePhase.Offers[id] = &PlayerUpgradeOffer{Choices: m.createUpgradeChoices(player, m.UpgradePhase.Source), SelectedIndex: -1}
+	}
 	return player
 }
 
 func (m *Match) RemovePlayer(id string) {
 	delete(m.Players, id)
+	if m.UpgradePhase != nil {
+		delete(m.UpgradePhase.Offers, id)
+		if len(m.UpgradePhase.Offers) == 0 {
+			m.UpgradePhase = nil
+		}
+	}
 }
 
 func (m *Match) ApplyInput(playerID string, input protocol.InputPayload, now time.Time) error {
@@ -335,6 +369,19 @@ func (m *Match) Step(now time.Time) Events {
 
 	tickStarted := time.Now()
 	m.Tick++
+	if m.UpgradePhase != nil {
+		events := Events{}
+		if !now.Before(m.UpgradePhase.Deadline) || m.upgradePhaseComplete() {
+			m.resolveUpgradePhase(&events)
+		}
+		events.Metrics.Total = time.Since(tickStarted)
+		return events
+	}
+	if m.beginEarnedLevelIfReady(now) {
+		events := Events{UpgradeOffersChanged: true}
+		events.Metrics.Total = time.Since(tickStarted)
+		return events
+	}
 	m.Elapsed += TickDuration
 	events := Events{}
 	phaseStarted := time.Now()
@@ -355,8 +402,12 @@ func (m *Match) Step(now time.Time) Events {
 	m.updateMonsters(&events)
 	events.Metrics.EnemyAI = time.Since(phaseStarted)
 	phaseStarted = time.Now()
-	m.updatePickups(&events)
+	m.updatePickups(&events, now)
 	events.Metrics.Pickups = time.Since(phaseStarted)
+	if m.UpgradePhase != nil {
+		events.Metrics.Total = time.Since(tickStarted)
+		return events
+	}
 	phaseStarted = time.Now()
 	m.spawnMonsters()
 	events.Metrics.Spawning = time.Since(phaseStarted)
@@ -605,10 +656,10 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 				continue
 			}
 			if projectile.ExplosionRadius > 0 {
-				monster.HP -= enemyDamageAfterArmor(monster, projectile.ImpactDamage)
+				m.applyMonsterDamage(monsterID, monster, projectile.OwnerID, projectile.ImpactDamage, events)
 				m.createExplosion(projectile)
 			} else {
-				monster.HP -= enemyDamageAfterArmor(monster, projectile.Damage)
+				m.applyMonsterDamage(monsterID, monster, projectile.OwnerID, projectile.Damage, events)
 			}
 			metrics.ConfirmedHits++
 			m.removeProjectile(id, "enemy_hit", events)
@@ -642,7 +693,7 @@ func (m *Match) updateExplosions(events *Events, metrics *TickMetrics) {
 				continue
 			}
 			explosion.LastDamage[monsterID] = m.Elapsed
-			monster.HP -= enemyDamageAfterArmor(monster, explosion.Damage)
+			m.applyMonsterDamage(monsterID, monster, explosion.OwnerID, explosion.Damage, events)
 			metrics.ConfirmedHits++
 			if monster.HP <= 0 {
 				m.killMonster(monsterID, explosion.OwnerID, events)
@@ -669,7 +720,7 @@ func (m *Match) updateBeams(events *Events, metrics *TickMetrics) {
 				continue
 			}
 			beam.LastDamage[monsterID] = m.Elapsed
-			monster.HP -= enemyDamageAfterArmor(monster, beam.Damage)
+			m.applyMonsterDamage(monsterID, monster, beam.OwnerID, beam.Damage, events)
 			metrics.ConfirmedHits++
 			if monster.HP <= 0 {
 				m.killMonster(monsterID, beam.OwnerID, events)
@@ -729,24 +780,29 @@ func (m *Match) castMonsterSpell(monster *Monster, target *Player, events *Event
 	if len(monster.SpellIDs) == 0 {
 		return
 	}
-	spell, ok := SpellByID(monster.SpellIDs[0])
-	if !ok || spell.Kind != "projectile" || m.Elapsed-monster.LastSpellAt < spell.Cooldown {
-		return
+	if monster.LastSpellAt == nil {
+		monster.LastSpellAt = make(map[string]time.Duration, len(monster.SpellIDs))
 	}
 	dx, dy := target.X-monster.X, target.Y-monster.Y
 	distance := math.Hypot(dx, dy)
-	if distance <= 0 || distance > spell.Range {
+	if distance <= 0 {
 		return
 	}
-	monster.LastSpellAt = m.Elapsed
 	baseAngle := math.Atan2(dy, dx)
 	spread := ProjectileSpread * math.Pi / 180
-	for direction := range spell.Directions {
-		angle := baseAngle + (float64(direction)-float64(spell.Directions-1)/2)*spread
-		m.nextProjectileID++
-		projectile := &Projectile{ID: m.nextProjectileID, OwnerID: "enemy:" + strconv.FormatUint(monster.ID, 10), X: monster.X, Y: monster.Y, VelocityX: math.Cos(angle) * spell.ProjectileSpeed, VelocityY: math.Sin(angle) * spell.ProjectileSpeed, Damage: max(1, int(math.Round(float64(spell.Damage)*monster.AttackDamageMultiplier))), Range: spell.Range, Radius: spell.Radius, SpellID: spell.ID, TargetsPlayers: true}
-		m.Projectiles[projectile.ID] = projectile
-		events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{ProjectileID: projectile.ID, OwnerID: projectile.OwnerID, WeaponID: spell.ID, X: projectile.X, Y: projectile.Y, VelocityX: projectile.VelocityX, VelocityY: projectile.VelocityY, SpawnTick: m.Tick})
+	for _, spellID := range monster.SpellIDs {
+		spell, ok := SpellByID(spellID)
+		if !ok || spell.Kind != "projectile" || distance > spell.Range || m.Elapsed-monster.LastSpellAt[spellID] < spell.Cooldown {
+			continue
+		}
+		monster.LastSpellAt[spellID] = m.Elapsed
+		for direction := range spell.Directions {
+			angle := baseAngle + (float64(direction)-float64(spell.Directions-1)/2)*spread
+			m.nextProjectileID++
+			projectile := &Projectile{ID: m.nextProjectileID, OwnerID: "enemy:" + strconv.FormatUint(monster.ID, 10), X: monster.X, Y: monster.Y, VelocityX: math.Cos(angle) * spell.ProjectileSpeed, VelocityY: math.Sin(angle) * spell.ProjectileSpeed, Damage: max(1, int(math.Round(float64(spell.Damage)*monster.AttackDamageMultiplier))), Range: spell.Range, Radius: spell.Radius, SpellID: spell.ID, TargetsPlayers: true}
+			m.Projectiles[projectile.ID] = projectile
+			events.SpawnedProjectiles = append(events.SpawnedProjectiles, protocol.ProjectileSpawnedPayload{ProjectileID: projectile.ID, OwnerID: projectile.OwnerID, WeaponID: spell.ID, X: projectile.X, Y: projectile.Y, VelocityX: projectile.VelocityX, VelocityY: projectile.VelocityY, SpawnTick: m.Tick})
+		}
 	}
 }
 
@@ -807,17 +863,16 @@ func (m *Match) separateMonsters() {
 	}
 }
 
-func (m *Match) updatePickups(events *Events) {
+func (m *Match) updatePickups(events *Events, now time.Time) {
 	for pickupID, pickup := range m.Pickups {
 		if pickup.Kind == "power_crate" {
 			if m.nearestLivingPlayerWithin(pickup.X, pickup.Y, PowerCrateRadius) == nil {
 				continue
 			}
 			delete(m.Pickups, pickupID)
-			for _, id := range sortedPlayerIDs(m.Players) {
-				events.AppliedUpgrades = append(events.AppliedUpgrades, m.applyRandomUpgrade(m.Players[id], "treasure_chest"))
-			}
-			continue
+			m.beginUpgradePhase(now, "treasure_chest")
+			events.UpgradeOffersChanged = true
+			return
 		}
 
 		player := m.nearestLivingPlayerWithin(pickup.X, pickup.Y, PlayerPickupRadius)
@@ -838,12 +893,9 @@ func (m *Match) updatePickups(events *Events) {
 		}
 		delete(m.Pickups, pickupID)
 		m.TeamExperience += max(1, pickup.Value)
-		for m.TeamExperience >= RequiredExperience(m.TeamLevel) {
-			m.TeamExperience -= RequiredExperience(m.TeamLevel)
-			m.TeamLevel++
-			for _, id := range sortedPlayerIDs(m.Players) {
-				events.AppliedUpgrades = append(events.AppliedUpgrades, m.applyRandomUpgrade(m.Players[id], "level_up"))
-			}
+		if m.beginEarnedLevelIfReady(now) {
+			events.UpgradeOffersChanged = true
+			return
 		}
 	}
 }
@@ -928,7 +980,7 @@ func (m *Match) spawnMonsterOf(enemyID string, requestedMultipliers ...*EnemySta
 		}
 		m.nextMonsterID++
 		maxHP := max(1, int(math.Round(float64(definition.MaxHP)*m.monsterHealthMultiplier*healthMultiplier)))
-		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier * speedMultiplier, Radius: radius, ContactDamage: max(1, int(math.Round(float64(definition.ContactDamage)*damageMultiplier))), Armor: definition.Armor, SpellIDs: append([]string(nil), definition.SpellIDs...), LastSpellAt: m.Elapsed, AttackDamageMultiplier: damageMultiplier, ContactDelay: time.Duration(float64(definition.ContactDelay) * cooldownMultiplier), Experience: max(1, int(math.Round(float64(definition.Experience)*experienceMultiplier))), Score: max(1, int(math.Round(float64(definition.Score)*scoreMultiplier))), LastContact: make(map[string]time.Duration)}
+		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier * speedMultiplier, Radius: radius, ContactDamage: max(1, int(math.Round(float64(definition.ContactDamage)*damageMultiplier))), Armor: definition.Armor, SpellIDs: append([]string(nil), definition.SpellIDs...), LastSpellAt: make(map[string]time.Duration, len(definition.SpellIDs)), AttackDamageMultiplier: damageMultiplier, ContactDelay: time.Duration(float64(definition.ContactDelay) * cooldownMultiplier), Experience: max(1, int(math.Round(float64(definition.Experience)*experienceMultiplier))), Score: max(1, int(math.Round(float64(definition.Score)*scoreMultiplier))), LastContact: make(map[string]time.Duration)}
 		return m.nextMonsterID
 	}
 	return 0
@@ -943,6 +995,19 @@ func positiveMultiplier(value float64) float64 {
 
 func enemyDamageAfterArmor(monster *Monster, damage int) int {
 	return max(1, damage-monster.Armor)
+}
+
+func (m *Match) applyMonsterDamage(monsterID uint64, monster *Monster, attackerID string, rawDamage int, events *Events) {
+	damage := enemyDamageAfterArmor(monster, rawDamage)
+	monster.HP = max(0, monster.HP-damage)
+	events.DamageApplied = append(events.DamageApplied, protocol.DamageAppliedResult{
+		AttackerID:  attackerID,
+		TargetType:  "monster",
+		TargetID:    strconv.FormatUint(monsterID, 10),
+		Amount:      damage,
+		RemainingHP: monster.HP,
+		Death:       monster.HP == 0,
+	})
 }
 
 func (m *Match) removeProjectile(id uint64, reason string, events *Events) {
@@ -974,7 +1039,7 @@ func (m *Match) killMonster(monsterID uint64, ownerID string, events *Events) {
 	}
 }
 
-func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.UpgradeAppliedPayload {
+func availableUpgradeAttributes(player *Player) []string {
 	available := []string{"max_health", "health_regeneration", "attack_buff", "spell_damage"}
 	if player.SpellKind == "projectile" || player.SpellKind == "explosive_projectile" {
 		available = append(available, "projectile_speed")
@@ -1000,7 +1065,10 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 	if player.SpellDirections < 4 {
 		available = append(available, "spell_directions")
 	}
-	attribute := available[m.rng.Intn(len(available))]
+	return available
+}
+
+func (m *Match) applyUpgrade(player *Player, source, attribute string) protocol.UpgradeAppliedPayload {
 	baseValue, addedValue, finalValue := 0.0, 0.0, 0.0
 	switch attribute {
 	case "max_health":
@@ -1009,12 +1077,16 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		player.HP += 20
 		finalValue = float64(player.MaxHP)
 	case "armor":
-		baseValue, addedValue = player.BaseArmorPercent, 0.05
+		baseValue = player.BaseArmorPercent
+		before := player.ArmorPercent
 		player.ArmorPercent = min(MaximumArmorPercent, player.ArmorPercent+0.05)
+		addedValue = player.ArmorPercent - before
 		finalValue = player.ArmorPercent
 	case "movement_speed":
-		baseValue, addedValue = player.BaseMovementSpeed, player.BaseMovementSpeed*0.08
+		baseValue = player.BaseMovementSpeed
+		before := player.MovementSpeed
 		player.MovementSpeed = min(player.BaseMovementSpeed*(1+MaximumMovementBonus), player.MovementSpeed+player.BaseMovementSpeed*0.08)
+		addedValue = player.MovementSpeed - before
 		finalValue = player.MovementSpeed
 	case "health_regeneration":
 		baseValue, addedValue = player.BaseHealthRegeneration, 1
@@ -1025,8 +1097,10 @@ func (m *Match) applyRandomUpgrade(player *Player, source string) protocol.Upgra
 		player.AttackBuffPercent += 0.10
 		finalValue = player.AttackBuffPercent
 	case "cooldown":
-		baseValue, addedValue = player.BaseCooldownPercent, 0.08
+		baseValue = player.BaseCooldownPercent
+		before := player.CooldownPercent
 		player.CooldownPercent = min(0.60, player.CooldownPercent+0.08)
+		addedValue = player.CooldownPercent - before
 		finalValue = player.CooldownPercent
 	case "spell_damage":
 		increment := 4
@@ -1108,6 +1182,9 @@ func (m *Match) nearestLivingPlayerWithin(x, y, maximumDistance float64) *Player
 func (m *Match) processLevelEvents(events *Events) {
 	for m.nextLevelEvent < len(m.Level.Events) && m.Elapsed >= m.Level.Events[m.nextLevelEvent].At {
 		event := m.Level.Events[m.nextLevelEvent]
+		if event.Type == "boss" && len(m.livingPlayers()) == 0 {
+			return
+		}
 		m.nextLevelEvent++
 		switch event.Type {
 		case "spawn_rate":
@@ -1129,14 +1206,20 @@ func (m *Match) processLevelEvents(events *Events) {
 				m.meteorShowers = append(m.meteorShowers, activeMeteorShower{Definition: *event.MeteorShower, EndsAt: m.Elapsed + event.MeteorShower.Duration})
 			}
 		case "boss":
+			spawned := 0
 			for range max(1, event.BossCount) {
 				monsterID := m.spawnMonsterOf(event.EnemyID, event.BossMultipliers)
 				if monsterID != 0 {
+					spawned++
 					m.bossMonsterIDs[monsterID] = struct{}{}
 				}
 				if monsterID != 0 && event.EndMatchOnDeath {
 					m.endingBossIDs[monsterID] = struct{}{}
 				}
+			}
+			if spawned == 0 {
+				m.nextLevelEvent--
+				return
 			}
 		case "end":
 			m.finish("won", events)

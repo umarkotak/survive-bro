@@ -1,3 +1,5 @@
+import { enemyTextureKey } from '../config/assets'
+
 export const RANGER = {
   id: 'ranger',
   name: 'Ranger',
@@ -16,9 +18,9 @@ export const RANGER = {
 } as const
 
 export const SLIME_STAGES = {
-  'slime-stage-1': { texture: 'enemy-slime-stage-1', displaySize: 132 },
-  'slime-stage-2': { texture: 'enemy-slime-stage-2', displaySize: 154 },
-  'slime-stage-3': { texture: 'enemy-slime-stage-3', displaySize: 220 },
+  'slime-stage-1': { texture: enemyTextureKey('slime-stage-1'), displaySize: 132 },
+  'slime-stage-2': { texture: enemyTextureKey('slime-stage-2'), displaySize: 154 },
+  'slime-stage-3': { texture: enemyTextureKey('slime-stage-3'), displaySize: 220 },
 } as const
 
 export const LARGE_ROCK = {

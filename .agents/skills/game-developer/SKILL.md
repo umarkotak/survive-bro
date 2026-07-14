@@ -38,6 +38,8 @@ Do not move authority to simplify a caller. Client visuals may predict or interp
 6. Update relevant documentation in the same change.
 7. Do not run tests, typechecks, builds, benchmarks, browser checks, or manual playtests unless the user explicitly requests verification.
 
+For frontend visual work, read `docs/ui-design-direction.md` before editing. Preserve the Heavy Armament hierarchy, use supplied art as the composition anchor, keep desktop/mobile consistent, and centralize configurable media rather than scattering asset paths through components or CSS. For asset additions or moves, follow `docs/art-assets.md` and route public URLs through `apps/game/src/config/assets.ts`; do not change stable server content IDs merely to match folders.
+
 The user performs manual game verification. Record verification as omitted by request instead of silently treating the change as verified.
 
 Do not spawn agents or split work externally unless the user explicitly asks for delegation. Orchestrate by maintaining boundaries and sequencing.

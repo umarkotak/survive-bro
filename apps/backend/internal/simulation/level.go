@@ -116,9 +116,10 @@ type LevelDefinition struct {
 }
 
 var spells = map[string]SpellDefinition{
-	"fireball":   {ID: "fireball", Kind: "projectile", Damage: 20, Cooldown: 750 * time.Millisecond, ProjectileSpeed: 700, Range: 700, Radius: 10, Burst: 1, Directions: 1},
-	"soul-track": {ID: "soul-track", Kind: "beam", Damage: 18, Cooldown: 1500 * time.Millisecond, Range: 520, Radius: 16, Burst: 1, Directions: 1, BeamLength: 520, BeamWidth: 32, Duration: time.Second, DamageInterval: 500 * time.Millisecond},
-	"rocket":     {ID: "rocket", Kind: "explosive_projectile", Damage: 30, ImpactDamage: 20, Cooldown: 1600 * time.Millisecond, ProjectileSpeed: 480, Range: 850, Radius: 12, Burst: 1, Directions: 1, ExplosionRadius: 80, ExplosionDuration: time.Second, DamageInterval: 500 * time.Millisecond},
+	"fireball":         {ID: "fireball", Kind: "projectile", Damage: 20, Cooldown: 750 * time.Millisecond, ProjectileSpeed: 700, Range: 700, Radius: 10, Burst: 1, Directions: 1},
+	"enemy-slime-ball": {ID: "enemy-slime-ball", Kind: "projectile", Damage: 18, Cooldown: time.Second, ProjectileSpeed: 360, Range: 360, Radius: 12, Burst: 1, Directions: 1},
+	"soul-track":       {ID: "soul-track", Kind: "beam", Damage: 18, Cooldown: 1500 * time.Millisecond, Range: 520, Radius: 16, Burst: 1, Directions: 1, BeamLength: 520, BeamWidth: 32, Duration: time.Second, DamageInterval: 500 * time.Millisecond},
+	"rocket":           {ID: "rocket", Kind: "explosive_projectile", Damage: 30, ImpactDamage: 20, Cooldown: 1600 * time.Millisecond, ProjectileSpeed: 480, Range: 850, Radius: 12, Burst: 1, Directions: 1, ExplosionRadius: 80, ExplosionDuration: time.Second, DamageInterval: 500 * time.Millisecond},
 }
 
 var characters = map[string]CharacterDefinition{
@@ -128,9 +129,9 @@ var characters = map[string]CharacterDefinition{
 }
 
 var enemies = map[string]EnemyDefinition{
-	"slime-stage-1": {ID: "slime-stage-1", Name: "Slime", SpriteID: "enemy-slime-stage-1", Score: 100, Experience: 1, MaxHP: 40, Armor: 1, Speed: 80, Radius: 24, ContactDamage: 10, ContactDelay: 800 * time.Millisecond},
-	"slime-stage-2": {ID: "slime-stage-2", Name: "Greater Slime", SpriteID: "enemy-slime-stage-2", Score: 250, Experience: 2, MaxHP: 90, Armor: 1, Speed: 92, Radius: 30, ContactDamage: 16, ContactDelay: 750 * time.Millisecond},
-	"slime-stage-3": {ID: "slime-stage-3", Name: "Slime King", SpriteID: "enemy-slime-stage-3", Score: 5000, Experience: 30, MaxHP: 1800, Armor: 1, Speed: 62, Radius: 54, ContactDamage: 28, SpellIDs: []string{"fireball"}, ContactDelay: 650 * time.Millisecond},
+	"slime-stage-1": {ID: "slime-stage-1", Name: "Slime", SpriteID: "enemy-slime-stage-1", Score: 100, Experience: 1, MaxHP: 40, Armor: 1, Speed: 80, Radius: 24, ContactDamage: 10, SpellIDs: []string{"enemy-slime-ball"}, ContactDelay: 800 * time.Millisecond},
+	"slime-stage-2": {ID: "slime-stage-2", Name: "Greater Slime", SpriteID: "enemy-slime-stage-2", Score: 250, Experience: 2, MaxHP: 90, Armor: 1, Speed: 92, Radius: 30, ContactDamage: 16, SpellIDs: []string{"enemy-slime-ball"}, ContactDelay: 750 * time.Millisecond},
+	"slime-stage-3": {ID: "slime-stage-3", Name: "Slime King", SpriteID: "enemy-slime-stage-3", Score: 5000, Experience: 30, MaxHP: 1800, Armor: 1, Speed: 62, Radius: 54, ContactDamage: 28, SpellIDs: []string{"enemy-slime-ball"}, ContactDelay: 650 * time.Millisecond},
 }
 
 var levelOne = LevelDefinition{
@@ -148,13 +149,27 @@ var levelOne = LevelDefinition{
 	},
 }
 
+var levelDefinitions = map[string]LevelDefinition{levelOne.ID: levelOne}
+
 func LevelByID(id string) (LevelDefinition, bool) {
-	if id == "" || id == levelOne.ID {
-		return levelOne, true
+	if id == "" {
+		id = "level-1"
 	}
-	return LevelDefinition{}, false
+	value, ok := levelDefinitions[id]
+	return value, ok
 }
-func AvailableLevels() []LevelDefinition { return []LevelDefinition{levelOne} }
+func AvailableLevels() []LevelDefinition {
+	ids := make([]string, 0, len(levelDefinitions))
+	for id := range levelDefinitions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]LevelDefinition, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, levelDefinitions[id])
+	}
+	return result
+}
 func CharacterByID(id string) (CharacterDefinition, bool) {
 	value, ok := characters[id]
 	return value, ok

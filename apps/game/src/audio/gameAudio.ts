@@ -10,6 +10,7 @@ type ToneOptions = {
 class GameAudio {
   private context: AudioContext | null = null
   private lastShotAt = 0
+  private lastMenuHoverAt = 0
 
   unlock = (): void => {
     const context = this.getContext()
@@ -41,6 +42,19 @@ class GameAudio {
     this.tone({ frequency: 520, duration: 0.09, volume: 0.05, type: 'triangle' })
     this.tone({ frequency: 780, duration: 0.12, volume: 0.045, type: 'triangle', delay: 0.08 })
     this.tone({ frequency: 1040, duration: 0.15, volume: 0.04, type: 'triangle', delay: 0.16 })
+  }
+
+  menuHover(): void {
+    const now = performance.now()
+    if (now - this.lastMenuHoverAt < 90) return
+    this.lastMenuHoverAt = now
+    this.tone({ frequency: 180, endFrequency: 260, duration: 0.065, volume: 0.022, type: 'square' })
+    this.tone({ frequency: 920, endFrequency: 720, duration: 0.085, volume: 0.012, type: 'sine', delay: 0.018 })
+  }
+
+  menuClick(): void {
+    this.tone({ frequency: 240, endFrequency: 130, duration: 0.09, volume: 0.035, type: 'square' })
+    this.tone({ frequency: 680, endFrequency: 980, duration: 0.12, volume: 0.022, type: 'triangle', delay: 0.025 })
   }
 
   private getContext(): AudioContext | null {

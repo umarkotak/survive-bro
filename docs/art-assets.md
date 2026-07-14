@@ -1,8 +1,8 @@
 # Art Asset Manifest
 
-This document defines the production image files expected by `apps/game`. All paths below are relative to `apps/game`; place files under `public/assets/`.
+This document defines the production media expected by `apps/game`. All paths are relative to `apps/game`. Asset category and content ID belong in folders; filenames describe only the frame or variant inside that content folder.
 
-The supplied terrain, Ranger, and large-rock files are loaded by `BootScene`. Generated textures remain only for assets that have not been supplied yet.
+The supplied terrain, three characters, Level 1 Slimes, rocks, and menu media use the hierarchy below. `src/config/assets.ts` converts stable content IDs into public paths; `BootScene` keeps stable Phaser texture keys. Generated textures remain only for assets that have not been supplied yet.
 
 ## General rules
 
@@ -19,11 +19,11 @@ The supplied terrain, Ranger, and large-rock files are loaded by `BootScene`. Ge
 Every moving character and enemy uses idle and walking source images. Characters with a projectile attack may also provide an attack frame:
 
 ```text
-{entity}-idle.png
-{entity}-walk-1.png
-{entity}-walk-2.png
-{entity}-walk-3.png
-{entity}-attack-1.png
+{category}/{entity-id}/idle.png
+{category}/{entity-id}/walk-1.png
+{category}/{entity-id}/walk-2.png
+{category}/{entity-id}/walk-3.png
+{category}/{entity-id}/attack-1.png
 ```
 
 Behavior:
@@ -41,65 +41,74 @@ Behavior:
 
 | ID | Location | Canvas | Notes |
 | --- | --- | ---: | --- |
-| Meadow variant 1 | `public/assets/terrain-variant-1.png` | 256 x 256 | Seamless base tile. |
-| Meadow variant 2 | `public/assets/terrain-variant-2.png` | 256 x 256 | Seamless visual variation. |
-| Meadow variant 3 | `public/assets/terrain-variant-3.png` | 256 x 256 | Seamless visual variation. |
+| Meadow variant 1 | `public/assets/terrain/variant-1.png` | 256 x 256 | Seamless base tile. |
+| Meadow variant 2 | `public/assets/terrain/variant-2.png` | 256 x 256 | Seamless visual variation. |
+| Meadow variant 3 | `public/assets/terrain/variant-3.png` | 256 x 256 | Seamless visual variation. |
 
 ### Obstacles and shadows
 
 | ID | Location | Canvas | Notes |
 | --- | --- | ---: | --- |
-| Large rock 1 | `public/assets/obstacle-large-rock-1.png` | 256 x 256 | Rendered at 180 x 180; visual collision remains server-owned. |
-| Large rock 2 | `public/assets/obstacle-large-rock-2.png` | 256 x 256 | Same footprint as variant 1. |
-| Large rock 3 | `public/assets/obstacle-large-rock-3.png` | 256 x 256 | Same footprint as variant 1. |
-| Entity shadow | `public/assets/entity-shadow.png` | 128 x 52 | Soft transparent ellipse; no character details. |
+| Large rock 1 | `public/assets/obstacle/large-rock-1.png` | 256 x 256 | Rendered at 180 x 180; visual collision remains server-owned. |
+| Large rock 2 | `public/assets/obstacle/large-rock-2.png` | 256 x 256 | Same footprint as variant 1. |
+| Large rock 3 | `public/assets/obstacle/large-rock-3.png` | 256 x 256 | Same footprint as variant 1. |
+| Entity shadow | `public/assets/misc/entity-shadow.png` | 128 x 52 | Soft transparent ellipse; no character details. |
 
 ### Ranger
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Idle | `public/assets/character-ranger-idle.png` | 256 x 256 |
-| Walk 1 | `public/assets/character-ranger-walk-1.png` | 256 x 256 |
-| Walk 2 | `public/assets/character-ranger-walk-2.png` | 256 x 256 |
-| Walk 3 | `public/assets/character-ranger-walk-3.png` | 256 x 256 |
-| Attack 1 | `public/assets/character-ranger-attack-1.png` | 256 x 256 |
-| Selection portrait | `public/assets/character-ranger-portrait.png` | 256 x 256 |
+| Idle | `public/assets/character/ranger/idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character/ranger/walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character/ranger/walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character/ranger/walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character/ranger/attack-1.png` | 256 x 256 |
+| Selection portrait | `public/assets/character/ranger/portrait.png` | 256 x 256 |
 
 ### Frieren
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Idle | `public/assets/character-frieren-idle.png` | 256 x 256 |
-| Walk 1 | `public/assets/character-frieren-walk-1.png` | 256 x 256 |
-| Walk 2 | `public/assets/character-frieren-walk-2.png` | 256 x 256 |
-| Walk 3 | `public/assets/character-frieren-walk-3.png` | 256 x 256 |
-| Attack 1 | `public/assets/character-frieren-attack-1.png` | 256 x 256 |
+| Idle | `public/assets/character/frieren/idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character/frieren/walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character/frieren/walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character/frieren/walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character/frieren/attack-1.png` | 256 x 256 |
 
 ### Catapult
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Idle | `public/assets/character-catapult-idle.png` | 256 x 256 |
-| Walk 1 | `public/assets/character-catapult-walk-1.png` | 256 x 256 |
-| Walk 2 | `public/assets/character-catapult-walk-2.png` | 256 x 256 |
-| Walk 3 | `public/assets/character-catapult-walk-3.png` | 256 x 256 |
-| Attack 1 | `public/assets/character-catapult-attack-1.png` | 256 x 256 |
+| Idle | `public/assets/character/catapult/idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character/catapult/walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character/catapult/walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character/catapult/walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character/catapult/attack-1.png` | 256 x 256 |
 
 ### Level 1 Slimes
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Stage 1 | `public/assets/enemy-slime-stage-1.png` | 256 x 256 |
-| Stage 2 | `public/assets/enemy-slime-stage-2.png` | 256 x 256 |
-| Stage 3 boss | `public/assets/enemy-slime-stage-3.png` | 256 x 256 |
+| Stage 1 | `public/assets/enemy/slime-stage-1/idle.png` | 256 x 256 |
+| Stage 2 | `public/assets/enemy/slime-stage-2/idle.png` | 256 x 256 |
+| Stage 3 boss | `public/assets/enemy/slime-stage-3/idle.png` | 256 x 256 |
 
 ### Current attack and pickups
 
 | ID | Location | Canvas | Notes |
 | --- | --- | ---: | --- |
-| Arc Bolt | `public/assets/bullet-arc-bolt.png` | 48 x 24 | Points right; Phaser rotates it to trajectory. |
-| Experience crystal | `public/assets/pickup-experience-crystal.png` | 28 x 28 | Centered for rotation and magnet animation. |
-| Power crate | `public/assets/pickup-power-crate.png` | 48 x 48 | Gold or otherwise visually distinct from XP. |
+| Arc Bolt | `public/assets/spell/arc-bolt/projectile.png` | 48 x 24 | Points right; Phaser rotates it to trajectory. |
+| Experience crystal | `public/assets/pickup/experience-crystal.png` | 28 x 28 | Centered for rotation and magnet animation. |
+| Power crate | `public/assets/pickup/power-crate.png` | 48 x 48 | Gold or otherwise visually distinct from XP. |
+
+### Menu media
+
+| ID | Location | Notes |
+| --- | --- | --- |
+| Background fallback | `public/assets/misc/menu-background.png` | Always available as poster/fallback. |
+| Background video | `public/assets/misc/menu-background.mp4` | Optional motion layer. |
+| Transparent logo | `public/assets/misc/menu-logo.png` | Active menu logo. |
+| Opaque logo source | `public/assets/misc/menu-logo-opaque.png` | Preserved alternate/source asset. |
 
 ## Planned MVP assets
 
@@ -109,13 +118,13 @@ These files support Guardian, the planned Brute enemy, richer feedback, and upgr
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Idle | `public/assets/character-guardian-idle.png` | 256 x 256 |
-| Walk 1 | `public/assets/character-guardian-walk-1.png` | 256 x 256 |
-| Walk 2 | `public/assets/character-guardian-walk-2.png` | 256 x 256 |
-| Walk 3 | `public/assets/character-guardian-walk-3.png` | 256 x 256 |
-| Attack 1 | `public/assets/character-guardian-attack-1.png` | 256 x 256 |
-| Selection portrait | `public/assets/character-guardian-portrait.png` | 256 x 256 |
-| Guardian Pulse | `public/assets/attack-guardian-pulse.png` | 270 x 270 |
+| Idle | `public/assets/character/guardian/idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/character/guardian/walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/character/guardian/walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/character/guardian/walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/character/guardian/attack-1.png` | 256 x 256 |
+| Selection portrait | `public/assets/character/guardian/portrait.png` | 256 x 256 |
+| Guardian Pulse | `public/assets/spell/guardian-pulse/activation.png` | 270 x 270 |
 
 Guardian Pulse is a centered transparent circle. The client scales and fades it; multiple source frames are not required.
 
@@ -123,24 +132,24 @@ Guardian Pulse is a centered transparent circle. The client scales and fades it;
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Idle | `public/assets/enemy-brute-idle.png` | 256 x 256 |
-| Walk 1 | `public/assets/enemy-brute-walk-1.png` | 256 x 256 |
-| Walk 2 | `public/assets/enemy-brute-walk-2.png` | 256 x 256 |
-| Walk 3 | `public/assets/enemy-brute-walk-3.png` | 256 x 256 |
-| Attack 1 | `public/assets/enemy-brute-attack-1.png` | 256 x 256 |
+| Idle | `public/assets/enemy/brute/idle.png` | 256 x 256 |
+| Walk 1 | `public/assets/enemy/brute/walk-1.png` | 256 x 256 |
+| Walk 2 | `public/assets/enemy/brute/walk-2.png` | 256 x 256 |
+| Walk 3 | `public/assets/enemy/brute/walk-3.png` | 256 x 256 |
+| Attack 1 | `public/assets/enemy/brute/attack-1.png` | 256 x 256 |
 
 ### Combat and progression effects
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Arc Bolt hit 1 | `public/assets/effect-arc-bolt-hit-1.png` | 64 x 64 |
-| Arc Bolt hit 2 | `public/assets/effect-arc-bolt-hit-2.png` | 64 x 64 |
-| Enemy death 1 | `public/assets/effect-enemy-death-1.png` | 96 x 96 |
-| Enemy death 2 | `public/assets/effect-enemy-death-2.png` | 96 x 96 |
-| Level up 1 | `public/assets/effect-level-up-1.png` | 128 x 128 |
-| Level up 2 | `public/assets/effect-level-up-2.png` | 128 x 128 |
-| Crystal absorption glow | `public/assets/effect-crystal-absorb.png` | 48 x 48 |
-| Player damage flash | `public/assets/effect-player-damage.png` | 96 x 96 |
+| Arc Bolt hit 1 | `public/assets/spell/arc-bolt/hit-1.png` | 64 x 64 |
+| Arc Bolt hit 2 | `public/assets/spell/arc-bolt/hit-2.png` | 64 x 64 |
+| Enemy death 1 | `public/assets/effect/enemy-death-1.png` | 96 x 96 |
+| Enemy death 2 | `public/assets/effect/enemy-death-2.png` | 96 x 96 |
+| Level up 1 | `public/assets/effect/level-up-1.png` | 128 x 128 |
+| Level up 2 | `public/assets/effect/level-up-2.png` | 128 x 128 |
+| Crystal absorption glow | `public/assets/effect/crystal-absorb.png` | 48 x 48 |
+| Player damage flash | `public/assets/effect/player-damage.png` | 96 x 96 |
 
 Two-frame effects play once and then disappear; they do not loop.
 
@@ -148,53 +157,53 @@ Two-frame effects play once and then disappear; they do not loop.
 
 | ID | Location | Canvas |
 | --- | --- | ---: |
-| Damage | `public/assets/icon-upgrade-damage.png` | 64 x 64 |
-| Cooldown | `public/assets/icon-upgrade-cooldown.png` | 64 x 64 |
-| Movement speed | `public/assets/icon-upgrade-movement.png` | 64 x 64 |
-| Vitality | `public/assets/icon-upgrade-vitality.png` | 64 x 64 |
-| Armor | `public/assets/icon-upgrade-armor.png` | 64 x 64 |
-| Magnet | `public/assets/icon-upgrade-magnet.png` | 64 x 64 |
+| Damage | `public/assets/icon/upgrade/damage.png` | 64 x 64 |
+| Cooldown | `public/assets/icon/upgrade/cooldown.png` | 64 x 64 |
+| Movement speed | `public/assets/icon/upgrade/movement.png` | 64 x 64 |
+| Vitality | `public/assets/icon/upgrade/vitality.png` | 64 x 64 |
+| Armor | `public/assets/icon/upgrade/armor.png` | 64 x 64 |
+| Magnet | `public/assets/icon/upgrade/magnet.png` | 64 x 64 |
 
 ## Future naming contract
 
 Each character owns its visual set, stats, and default attack ID. Add new characters using:
 
 ```text
-public/assets/character-{character-id}-idle.png
-public/assets/character-{character-id}-walk-1.png
-public/assets/character-{character-id}-walk-2.png
-public/assets/character-{character-id}-walk-3.png
-public/assets/character-{character-id}-attack-1.png
-public/assets/character-{character-id}-portrait.png
+public/assets/character/{character-id}/idle.png
+public/assets/character/{character-id}/walk-1.png
+public/assets/character/{character-id}/walk-2.png
+public/assets/character/{character-id}/walk-3.png
+public/assets/character/{character-id}/attack-1.png
+public/assets/character/{character-id}/portrait.png
 ```
 
 Example:
 
 ```text
-public/assets/character-bob-idle.png
-public/assets/character-bob-walk-1.png
-public/assets/character-bob-walk-2.png
-public/assets/character-bob-walk-3.png
-public/assets/character-bob-attack-1.png
-public/assets/character-bob-portrait.png
+public/assets/character/bob/idle.png
+public/assets/character/bob/walk-1.png
+public/assets/character/bob/walk-2.png
+public/assets/character/bob/walk-3.png
+public/assets/character/bob/attack-1.png
+public/assets/character/bob/portrait.png
 ```
 
 Each enemy follows the same minimal movement pattern:
 
 ```text
-public/assets/enemy-{enemy-id}-idle.png
-public/assets/enemy-{enemy-id}-walk-1.png
-public/assets/enemy-{enemy-id}-walk-2.png
-public/assets/enemy-{enemy-id}-walk-3.png
-public/assets/enemy-{enemy-id}-attack-1.png
+public/assets/enemy/{enemy-id}/idle.png
+public/assets/enemy/{enemy-id}/walk-1.png
+public/assets/enemy/{enemy-id}/walk-2.png
+public/assets/enemy/{enemy-id}/walk-3.png
+public/assets/enemy/{enemy-id}/attack-1.png
 ```
 
 Each bullet or attack owns its own visual assets:
 
 ```text
-public/assets/bullet-{attack-id}.png
-public/assets/effect-{attack-id}-hit-1.png
-public/assets/effect-{attack-id}-hit-2.png
+public/assets/spell/{attack-id}/projectile.png
+public/assets/spell/{attack-id}/hit-1.png
+public/assets/spell/{attack-id}/hit-2.png
 ```
 
 Character definitions will reference their default attack ID; attack definitions will reference the corresponding bullet and effect asset IDs. This keeps art selection data-driven without transferring gameplay authority to the client.

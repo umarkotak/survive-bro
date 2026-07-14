@@ -160,7 +160,7 @@ Gate:
 - Both character kits work for every player.
 - Clients cannot grant damage or XP or select an unoffered upgrade.
 - Projectiles remain visually smooth between snapshots.
-- Stack limits and eight-second fallback are tested.
+- Stack limits, private per-player card rolls, synchronized room pause, and the 50-second fallback are tested.
 
 ## Milestone 6 — Match lifecycle
 

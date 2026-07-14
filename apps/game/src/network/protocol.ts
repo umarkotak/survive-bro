@@ -5,6 +5,8 @@ export type MessageType =
   | 'leave_room'
   | 'ping'
   | 'input'
+  | 'select_upgrade'
+  | 'debug_level_up'
   | 'joined'
   | 'room_state'
   | 'match_started'
@@ -13,6 +15,8 @@ export type MessageType =
   | 'projectile_removed'
   | 'match_ended'
   | 'pong'
+  | 'damage_applied_batch'
+  | 'upgrade_offered'
   | 'upgrade_applied'
   | 'error'
   | 'server_shutdown'
@@ -22,6 +26,8 @@ const typeToId: Record<MessageType, number> = {
   leave_room: 2,
   ping: 3,
   input: 4,
+  select_upgrade: 5,
+  debug_level_up: 7,
   joined: 64,
   room_state: 65,
   match_started: 66,
@@ -30,6 +36,8 @@ const typeToId: Record<MessageType, number> = {
   projectile_removed: 69,
   match_ended: 70,
   pong: 71,
+  damage_applied_batch: 74,
+  upgrade_offered: 75,
   upgrade_applied: 76,
   error: 126,
   server_shutdown: 127,
@@ -162,6 +170,20 @@ export interface ProjectileRemovedPayload {
   reason: 'enemy_hit' | 'obstacle_hit' | 'range_expired' | 'match_ended' | 'player_hit'
 }
 
+export interface DamageAppliedResult {
+  attackerId: string
+  targetType: 'monster' | 'player'
+  targetId: string
+  amount: number
+  remainingHp: number
+  critical: boolean
+  death: boolean
+}
+
+export interface DamageAppliedBatchPayload {
+  results: DamageAppliedResult[]
+}
+
 export interface MatchEndedPayload {
   outcome: 'won' | 'lost'
   survivalMs: number
@@ -176,6 +198,22 @@ export interface ErrorPayload {
 }
 
 export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration' | 'explosion_radius' | 'explosion_duration'
+export interface UpgradeChoice {
+  attribute: UpgradeAttribute
+  currentValue: number
+  addedValue: number
+  finalValue: number
+}
+export interface UpgradeOfferedPayload {
+  offerId: number
+  source: 'level_up' | 'treasure_chest'
+  teamLevel: number
+  deadlineMs: number
+  pendingCount: number
+  totalCount: number
+  selected: boolean
+  choices: UpgradeChoice[]
+}
 export interface UpgradeAppliedPayload {
   playerId: string
   source: 'level_up' | 'treasure_chest'
@@ -232,12 +270,20 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
     case 'leave_room':
     case 'ping':
     case 'pong':
+    case 'debug_level_up':
       break
     case 'input': {
       const payload = envelope.payload as { sequence: number; moveX: number; moveY: number }
       writer.u32(payload.sequence)
       writer.f32(payload.moveX)
       writer.f32(payload.moveY)
+      break
+    }
+    case 'select_upgrade': {
+      const payload = envelope.payload as { offerId: number; choiceIndex: number }
+      if (!Number.isInteger(payload.choiceIndex) || payload.choiceIndex < 0 || payload.choiceIndex > 2) throw new Error('Upgrade choice index must be between 0 and 2')
+      writer.u32(payload.offerId)
+      writer.u8(payload.choiceIndex)
       break
     }
     case 'joined': {
@@ -300,6 +346,39 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
       const payload = envelope.payload as ProjectileRemovedPayload
       writer.u32(payload.projectileId)
       writer.u8(encodeRemovalReason(payload.reason))
+      break
+    }
+    case 'damage_applied_batch': {
+      const payload = envelope.payload as DamageAppliedBatchPayload
+      if (payload.results.length > 256) throw new Error('Damage result count exceeds 256')
+      writer.u16(payload.results.length)
+      for (const result of payload.results) {
+        writer.string(result.attackerId)
+        writer.u8(result.targetType === 'monster' ? 0 : 1)
+        writer.string(result.targetId)
+        writer.u32(result.amount)
+        writer.u32(result.remainingHp)
+        writer.u8(Number(result.critical) | (Number(result.death) << 1))
+      }
+      break
+    }
+    case 'upgrade_offered': {
+      const payload = envelope.payload as UpgradeOfferedPayload
+      if (payload.choices.length !== 3) throw new Error('Upgrade offer must contain exactly 3 choices')
+      writer.u32(payload.offerId)
+      writer.u8(payload.source === 'level_up' ? 0 : 1)
+      writer.u16(payload.teamLevel)
+      writer.i64(payload.deadlineMs)
+      writer.u8(payload.pendingCount)
+      writer.u8(payload.totalCount)
+      writer.bool(payload.selected)
+      writer.u8(payload.choices.length)
+      for (const choice of payload.choices) {
+        writer.string(choice.attribute)
+        writer.f32(choice.currentValue)
+        writer.f32(choice.addedValue)
+        writer.f32(choice.finalValue)
+      }
       break
     }
     case 'match_ended': {
@@ -401,9 +480,16 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
     case 'leave_room':
     case 'ping':
     case 'pong':
+    case 'debug_level_up':
       return {}
     case 'input':
       return { sequence: reader.u32(), moveX: reader.f32(), moveY: reader.f32() }
+    case 'select_upgrade': {
+      const offerId = reader.u32()
+      const choiceIndex = reader.u8()
+      if (choiceIndex > 2) throw new Error(`Upgrade choice index exceeds limit: ${choiceIndex}`)
+      return { offerId, choiceIndex }
+    }
     case 'joined':
       return { playerId: reader.string(), reconnectToken: reader.string(), roomName: reader.string(), host: reader.bool() } satisfies JoinedPayload
     case 'room_state':
@@ -419,6 +505,42 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
       } satisfies ProjectileSpawnedPayload
     case 'projectile_removed':
       return { projectileId: reader.u32(), reason: decodeRemovalReason(reader.u8()) } satisfies ProjectileRemovedPayload
+    case 'damage_applied_batch': {
+      const count = reader.u16()
+      if (count > 256) throw new Error(`Damage result count exceeds limit: ${count}`)
+      const results: DamageAppliedResult[] = []
+      for (let index = 0; index < count; index += 1) {
+        const attackerId = reader.string()
+        const targetTypeId = reader.u8()
+        if (targetTypeId > 1) throw new Error(`Unknown damage target type: ${targetTypeId}`)
+        const targetId = reader.string()
+        const amount = reader.u32()
+        const remainingHp = reader.u32()
+        const flags = reader.u8()
+        if ((flags & ~3) !== 0) throw new Error(`Invalid damage flags: ${flags}`)
+        results.push({ attackerId, targetType: targetTypeId === 0 ? 'monster' : 'player', targetId, amount, remainingHp, critical: (flags & 1) !== 0, death: (flags & 2) !== 0 })
+      }
+      return { results } satisfies DamageAppliedBatchPayload
+    }
+    case 'upgrade_offered': {
+      const offerId = reader.u32()
+      const sourceId = reader.u8()
+      if (sourceId > 1) throw new Error(`Unknown upgrade source: ${sourceId}`)
+      const teamLevel = reader.u16()
+      const deadlineMs = reader.i64()
+      const pendingCount = reader.u8()
+      const totalCount = reader.u8()
+      const selected = reader.bool()
+      const choiceCount = reader.u8()
+      if (choiceCount !== 3 || totalCount === 0 || pendingCount > totalCount) throw new Error('Upgrade offer counts are invalid')
+      const choices: UpgradeChoice[] = []
+      for (let index = 0; index < choiceCount; index += 1) {
+        const attribute = reader.string()
+        if (!upgradeAttributes.has(attribute as UpgradeAttribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
+        choices.push({ attribute: attribute as UpgradeAttribute, currentValue: reader.f32(), addedValue: reader.f32(), finalValue: reader.f32() })
+      }
+      return { offerId, source: sourceId === 0 ? 'level_up' : 'treasure_chest', teamLevel, deadlineMs, pendingCount, totalCount, selected, choices } satisfies UpgradeOfferedPayload
+    }
     case 'match_ended':
       return {
         outcome: decodeOutcome(reader.u8()), survivalMs: reader.u32(), teamLevel: reader.u16(), totalKills: reader.u32(), score: reader.u32(),

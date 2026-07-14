@@ -22,7 +22,9 @@ A modifier targets one glossary attribute through a stable operation. The same e
 
 ### Enemy
 
-An enemy owns a stable ID, name, sprite ID, score, XP drop, health, flat armor, speed, collision radius, contact damage/cooldown, and optional reusable spell IDs. Enemy armor subtracts from every authoritative incoming hit with minimum damage `1`. Enemy spells use the same definitions as player spells while targeting and damage remain server-owned. Snapshots carry `typeId`; clients use that ID only for visuals.
+An enemy owns a stable ID, name, sprite ID, score, XP drop, health, flat armor, speed, collision radius, contact damage/cooldown, and optional reusable spell IDs. Enemy armor subtracts from every authoritative incoming hit with minimum damage `1`. Enemy spells use the same definitions as player spells, including damage, cooldown, range, projectile geometry, and effect asset IDs, while targeting and damage remain server-owned. Cooldown state is tracked independently per equipped spell so adding another spell does not block or reset the others. The current Slime family references `enemy-slime-ball`, a short-range projectile definition independent from player Fireball. Snapshots carry `typeId`; clients use that ID only for visuals.
+
+Runtime content may include clearly named dummy characters and levels for manual development. `dummy-tester` reuses the Ranger sprite set with durable test stats; `test-boss` spawns a high-health Slime King as soon as the first player exists. These entries use the same selection endpoints and validation as production content.
 
 ### Level
 

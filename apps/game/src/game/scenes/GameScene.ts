@@ -1,9 +1,11 @@
 import Phaser from 'phaser'
 
 import { gameAudio } from '../../audio/gameAudio'
+import { characterTextureKey } from '../../config/assets'
 import { diagnosticsEnabled } from '../../config/diagnostics'
 import type { MultiplayerSession } from '../../network/MultiplayerSession'
 import type {
+  DamageAppliedBatchPayload,
   Envelope,
   MatchEndedPayload,
   MatchStartedPayload,
@@ -56,6 +58,7 @@ interface ProjectileView {
   sprite: Phaser.GameObjects.Image
   velocityX: number
   velocityY: number
+  weaponId: string
 }
 interface BeamView { shape: Phaser.GameObjects.Rectangle }
 interface ExplosionView { shape: Phaser.GameObjects.Arc }
@@ -70,6 +73,11 @@ interface PickupView {
 
 interface PickupAbsorption {
   sprite: Phaser.GameObjects.Image
+  elapsed: number
+}
+
+interface DamageNumberView {
+  text: Phaser.GameObjects.Text
   elapsed: number
 }
 
@@ -91,6 +99,8 @@ export class GameScene extends Phaser.Scene {
   private readonly explosions = new Map<number, ExplosionView>()
   private readonly meteors = new Map<number, MeteorView>()
   private readonly pickupAbsorptions: PickupAbsorption[] = []
+  private readonly damageNumbers: DamageNumberView[] = []
+  private readonly damageNumberPool: Phaser.GameObjects.Text[] = []
   private readonly obstacleSprites: Phaser.GameObjects.Image[] = []
   private obstacles: MatchStartedPayload['obstacles'] = []
   private inputSequence = 0
@@ -132,12 +142,17 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     const seconds = Math.min(delta, 50) / 1000
+    if (this.session.bridge.getSnapshot().upgradePaused) {
+      if (diagnosticsEnabled) this.updateDiagnostics(delta)
+      return
+    }
     this.updateLocalInput(time, seconds)
     this.updatePlayerAnimations(time, delta)
     this.interpolatePlayers(seconds)
     this.interpolateMonsters(seconds)
     this.interpolatePickups(time, seconds)
     this.updatePickupAbsorptions(seconds)
+    this.updateDamageNumbers(seconds)
     this.updateProjectiles(seconds)
     this.updateIndicators()
     if (diagnosticsEnabled) this.updateDiagnostics(delta)
@@ -158,7 +173,10 @@ export class GameScene extends Phaser.Scene {
         this.handleProjectileSpawned(message.payload as ProjectileSpawnedPayload)
         break
       case 'projectile_removed':
-        this.removeProjectile((message.payload as ProjectileRemovedPayload).projectileId)
+        this.removeProjectile(message.payload as ProjectileRemovedPayload)
+        break
+      case 'damage_applied_batch':
+        this.handleDamageApplied(message.payload as DamageAppliedBatchPayload)
         break
       case 'match_ended':
         this.handleMatchEnded(message.payload as MatchEndedPayload)
@@ -183,6 +201,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups.clear()
     for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
     this.pickupAbsorptions.length = 0
+    this.recycleDamageNumbers()
     for (const projectile of this.projectiles.values()) projectile.sprite.destroy()
     this.projectiles.clear()
     for (const beam of this.beams.values()) beam.shape.destroy()
@@ -203,7 +222,7 @@ export class GameScene extends Phaser.Scene {
           .setData('obstacle-id', obstacle.id),
       )
     }
-    this.session.bridge.patch({ roomName: payload.roomName, outcome: 'playing', levelDurationMs: payload.durationMs, timelineEvents: payload.events, bosses: [] })
+    this.session.bridge.patch({ roomName: payload.roomName, levelId: payload.mapId, outcome: 'playing', levelDurationMs: payload.durationMs, timelineEvents: payload.events, bosses: [], upgradePaused: false })
   }
 
   private handleRoomState(payload: RoomStatePayload): void {
@@ -277,8 +296,29 @@ export class GameScene extends Phaser.Scene {
     if (owner) owner.attackUntil = this.time.now + attackFrameDurationMs
     if (payload.ownerId === this.session.network.playerId) gameAudio.fireball()
     const angle = Math.atan2(payload.velocityY, payload.velocityX)
-    const sprite = this.add.image(payload.x, payload.y, payload.weaponId === 'rocket' ? 'rocket' : 'arc-bolt').setRotation(angle).setDepth(payload.y + 2)
-    this.projectiles.set(payload.projectileId, { sprite, velocityX: payload.velocityX, velocityY: payload.velocityY })
+    const texture = payload.weaponId === 'rocket' ? 'rocket' : payload.weaponId === 'enemy-slime-ball' ? 'enemy-slime-ball' : 'arc-bolt'
+    const sprite = this.add.image(payload.x, payload.y, texture).setRotation(angle).setDepth(payload.y + 2)
+    this.projectiles.set(payload.projectileId, { sprite, velocityX: payload.velocityX, velocityY: payload.velocityY, weaponId: payload.weaponId })
+  }
+
+  private handleDamageApplied(payload: DamageAppliedBatchPayload): void {
+    for (const result of payload.results) {
+      if (result.targetType !== 'monster' || this.damageNumbers.length >= 80) continue
+      const targetId = Number(result.targetId)
+      const target = this.monsters.get(targetId)
+      if (!target || !Number.isSafeInteger(targetId)) continue
+      const text = this.damageNumberPool.pop() ?? this.add.text(0, 0, '', {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#ff3838',
+        stroke: '#360307',
+        strokeThickness: 3,
+      }).setOrigin(0.5)
+      const offset = ((targetId * 17 + this.damageNumbers.length * 11) % 25) - 12
+      text.setText(`-${result.amount}`).setPosition(target.sprite.x + offset, target.sprite.y - target.sprite.displayHeight * 0.34).setAlpha(1).setVisible(true).setDepth(target.sprite.y + 100)
+      this.damageNumbers.push({ text, elapsed: 0 })
+    }
   }
 
   private handleMatchEnded(payload: MatchEndedPayload): void {
@@ -339,13 +379,13 @@ export class GameScene extends Phaser.Scene {
   private updatePlayerAnimations(time: number, delta: number): void {
     for (const view of this.players.values()) {
       if (time < view.attackUntil) {
-        view.sprite.setTexture(`character-${view.characterId}-attack-1`)
+        view.sprite.setTexture(characterTextureKey(view.characterId, 'attack-1'))
         continue
       }
       if (!view.moving) {
         view.walkFrame = 0
         view.walkElapsed = 0
-        view.sprite.setTexture(`character-${view.characterId}-idle`)
+        view.sprite.setTexture(characterTextureKey(view.characterId, 'idle'))
         continue
       }
       view.walkElapsed += delta
@@ -353,7 +393,7 @@ export class GameScene extends Phaser.Scene {
         view.walkElapsed -= walkFrameDurationMs
         view.walkFrame = (view.walkFrame + 1) % walkFrames.length
       }
-      view.sprite.setTexture(`character-${view.characterId}-walk-${walkFrames[view.walkFrame]}`)
+      view.sprite.setTexture(characterTextureKey(view.characterId, `walk-${walkFrames[view.walkFrame]}`))
     }
   }
 
@@ -407,6 +447,19 @@ export class GameScene extends Phaser.Scene {
         absorption.sprite.destroy()
         this.pickupAbsorptions.splice(index, 1)
       }
+    }
+  }
+
+  private updateDamageNumbers(seconds: number): void {
+    for (let index = this.damageNumbers.length - 1; index >= 0; index -= 1) {
+      const view = this.damageNumbers[index]
+      view.elapsed += seconds
+      view.text.y -= 38 * seconds
+      view.text.setAlpha(Math.max(0, 1 - view.elapsed / 0.7))
+      if (view.elapsed < 0.7) continue
+      view.text.setVisible(false)
+      this.damageNumberPool.push(view.text)
+      this.damageNumbers.splice(index, 1)
     }
   }
 
@@ -470,7 +523,7 @@ export class GameScene extends Phaser.Scene {
     const isLocal = player.id === this.session.network.playerId
     const color = playerColor(player.id)
     const shadow = this.add.image(player.x, player.y + 48, 'entity-shadow').setDisplaySize(94, 38)
-    const sprite = this.add.image(player.x, player.y, `character-${player.characterId}-idle`).setDisplaySize(rangerDisplaySize, rangerDisplaySize)
+    const sprite = this.add.image(player.x, player.y, characterTextureKey(player.characterId, 'idle')).setDisplaySize(rangerDisplaySize, rangerDisplaySize)
     if (!isLocal) sprite.setTint(color)
     const name = this.add.text(player.x, player.y - 60, player.displayName, {
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -638,9 +691,14 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private removeProjectile(id: number): void {
-    this.projectiles.get(id)?.sprite.destroy()
-    this.projectiles.delete(id)
+  private removeProjectile(payload: ProjectileRemovedPayload): void {
+    const view = this.projectiles.get(payload.projectileId)
+    if (view && view.weaponId === 'enemy-slime-ball' && payload.reason === 'player_hit') {
+      const impact = this.add.circle(view.sprite.x, view.sprite.y, 18, 0xd92938, 0.34).setStrokeStyle(3, 0xff625f, 0.9).setDepth(view.sprite.y + 3)
+      this.time.delayedCall(140, () => impact.active && impact.destroy())
+    }
+    view?.sprite.destroy()
+    this.projectiles.delete(payload.projectileId)
   }
 
   private destroyPlayerView(view: PlayerView): void {
@@ -662,12 +720,24 @@ export class GameScene extends Phaser.Scene {
     this.meteors.clear()
     for (const absorption of this.pickupAbsorptions) absorption.sprite.destroy()
     this.pickupAbsorptions.length = 0
+    for (const view of this.damageNumbers) view.text.destroy()
+    this.damageNumbers.length = 0
+    for (const text of this.damageNumberPool) text.destroy()
+    this.damageNumberPool.length = 0
     this.unsubscribeNetwork?.()
     this.unsubscribeConnection?.()
     this.unsubscribeDiagnostics?.()
     this.unsubscribeNetwork = null
     this.unsubscribeConnection = null
     this.unsubscribeDiagnostics = null
+  }
+
+  private recycleDamageNumbers(): void {
+    for (const view of this.damageNumbers) {
+      view.text.setVisible(false)
+      this.damageNumberPool.push(view.text)
+    }
+    this.damageNumbers.length = 0
   }
 
   private createTerrain(): void {

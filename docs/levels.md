@@ -37,4 +37,8 @@ The create-room screen loads options from `GET /api/v1/levels` and sends the sel
 | `14:00` | Sovereign Slime King: HP `×5`, damage `×1.8`, speed `×1.25`; defeating it ends the level. |
 | `15:00` | Fixed fallback end event. |
 
-Level 1 uses the three existing terrain variants and three large-rock variants. Add future levels by defining their content and adding them to `AvailableLevels`; the room selector and public room metadata use stable level IDs.
+Level 1 uses the three existing terrain variants and three large-rock variants. Add future levels under the runtime `levels` map in `game-data/game.json`; startup validation loads them into `AvailableLevels`, and the room selector plus public room metadata use their stable IDs.
+
+## Boss Damage Lab
+
+`test-boss` is a manual-development level exposed through the normal level selector. It lasts ten minutes and schedules one Slime King boss at `0:00` with a `1000×` health multiplier. A concurrent spawn-rate event continuously mixes Stage 1 and Stage 2 Slimes at `1.2/sec` with base cap `35`, allowing boss and swarm behavior to be inspected together. A zero-time boss event waits until at least one living player exists before it is consumed, guaranteeing the boss actually spawns at match entry. The test-only **Auto level up** HUD action advances the shared level and opens the same synchronized three-card reward phase used by earned levels.

@@ -15,6 +15,8 @@ const (
 	maxDecodedExplosions = 256
 	maxDecodedMeteors    = 256
 	maxDecodedPickups    = 2048
+	maxDamageResults     = 256
+	maxUpgradeChoices    = 3
 )
 
 func Encode(envelope Envelope) ([]byte, error) {
@@ -158,7 +160,7 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 		if value.ReconnectToken != nil {
 			return e.string(*value.ReconnectToken)
 		}
-	case TypeLeaveRoom, TypePing, TypePong:
+	case TypeLeaveRoom, TypePing, TypePong, TypeDebugLevelUp:
 		if payload != nil {
 			switch payload.(type) {
 			case struct{}:
@@ -180,6 +182,20 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 			return err
 		}
 		return e.f32(value.MoveY)
+	case TypeSelectUpgrade:
+		value, ok := payload.(SelectUpgradePayload)
+		if !ok {
+			return payloadTypeError(messageType, payload)
+		}
+		offerID, err := uint32Value(value.OfferID, "upgrade offer ID")
+		if err != nil {
+			return err
+		}
+		if value.ChoiceIndex < 0 || value.ChoiceIndex >= maxUpgradeChoices {
+			return fmt.Errorf("upgrade choice index must be between 0 and %d", maxUpgradeChoices-1)
+		}
+		e.u32(offerID)
+		e.u8(uint8(value.ChoiceIndex))
 	case TypeJoined:
 		value, ok := payload.(JoinedPayload)
 		if !ok {
@@ -333,6 +349,87 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 			return err
 		}
 		e.u8(reason)
+	case TypeDamageAppliedBatch:
+		value, ok := payload.(DamageAppliedBatchPayload)
+		if !ok {
+			return payloadTypeError(messageType, payload)
+		}
+		if len(value.Results) > maxDamageResults {
+			return fmt.Errorf("damage result count exceeds %d", maxDamageResults)
+		}
+		e.u16(uint16(len(value.Results)))
+		for _, result := range value.Results {
+			if err := e.string(result.AttackerID); err != nil {
+				return err
+			}
+			targetType, err := encodeDamageTargetType(result.TargetType)
+			if err != nil {
+				return err
+			}
+			e.u8(targetType)
+			if err := e.string(result.TargetID); err != nil {
+				return err
+			}
+			amount, err := nonNegativeUint32Int(result.Amount, "damage amount")
+			if err != nil {
+				return err
+			}
+			remainingHP, err := nonNegativeUint32Int(result.RemainingHP, "remaining hp")
+			if err != nil {
+				return err
+			}
+			e.u32(amount)
+			e.u32(remainingHP)
+			var flags uint8
+			if result.Critical {
+				flags |= 1
+			}
+			if result.Death {
+				flags |= 2
+			}
+			e.u8(flags)
+		}
+	case TypeUpgradeOffered:
+		value, ok := payload.(UpgradeOfferedPayload)
+		if !ok {
+			return payloadTypeError(messageType, payload)
+		}
+		offerID, err := uint32Value(value.OfferID, "upgrade offer ID")
+		if err != nil {
+			return err
+		}
+		if value.TeamLevel < 1 || value.TeamLevel > math.MaxUint16 || value.PendingCount < 0 || value.PendingCount > math.MaxUint8 || value.TotalCount < 1 || value.TotalCount > math.MaxUint8 {
+			return fmt.Errorf("upgrade offer counts or team level are invalid")
+		}
+		if len(value.Choices) != maxUpgradeChoices {
+			return fmt.Errorf("upgrade offer must contain exactly %d choices", maxUpgradeChoices)
+		}
+		e.u32(offerID)
+		source, err := encodeUpgradeSource(value.Source)
+		if err != nil {
+			return err
+		}
+		e.u8(source)
+		e.u16(uint16(value.TeamLevel))
+		e.i64(value.DeadlineMs)
+		e.u8(uint8(value.PendingCount))
+		e.u8(uint8(value.TotalCount))
+		e.bool(value.Selected)
+		e.u8(uint8(len(value.Choices)))
+		for _, choice := range value.Choices {
+			if err := e.string(choice.Attribute); err != nil {
+				return err
+			}
+			if err := e.f32(choice.CurrentValue); err != nil {
+				return err
+			}
+			if err := e.f32(choice.AddedValue); err != nil {
+				return err
+			}
+			if err := e.f32(choice.FinalValue); err != nil {
+				return err
+			}
+		}
 	case TypeUpgradeApplied:
 		value, ok := payload.(UpgradeAppliedPayload)
 		if !ok {
@@ -751,7 +848,7 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 			token = &value
 		}
 		return JoinRoomPayload{DisplayName: displayName, CharacterID: characterID, ReconnectToken: token}, nil
-	case TypeLeaveRoom, TypePing, TypePong:
+	case TypeLeaveRoom, TypePing, TypePong, TypeDebugLevelUp:
 		return struct{}{}, nil
 	case TypeInput:
 		sequence, err := d.u32()
@@ -767,6 +864,19 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 			return nil, err
 		}
 		return InputPayload{Sequence: uint64(sequence), MoveX: moveX, MoveY: moveY}, nil
+	case TypeSelectUpgrade:
+		offerID, err := d.u32()
+		if err != nil {
+			return nil, err
+		}
+		choiceIndex, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		if choiceIndex >= maxUpgradeChoices {
+			return nil, fmt.Errorf("upgrade choice index %d exceeds limit", choiceIndex)
+		}
+		return SelectUpgradePayload{OfferID: uint64(offerID), ChoiceIndex: int(choiceIndex)}, nil
 	case TypeJoined:
 		playerID, err := d.string()
 		if err != nil {
@@ -801,6 +911,111 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 		}
 		reason, err := decodeRemovalReason(reasonID)
 		return ProjectileRemovedPayload{ProjectileID: uint64(id), Reason: reason}, err
+	case TypeDamageAppliedBatch:
+		count, err := d.u16()
+		if err != nil {
+			return nil, err
+		}
+		if count > maxDamageResults {
+			return nil, fmt.Errorf("damage result count %d exceeds limit", count)
+		}
+		results := make([]DamageAppliedResult, 0, count)
+		for range count {
+			attackerID, err := d.string()
+			if err != nil {
+				return nil, err
+			}
+			targetTypeID, err := d.u8()
+			if err != nil {
+				return nil, err
+			}
+			targetType, err := decodeDamageTargetType(targetTypeID)
+			if err != nil {
+				return nil, err
+			}
+			targetID, err := d.string()
+			if err != nil {
+				return nil, err
+			}
+			amount, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			remainingHP, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			flags, err := d.u8()
+			if err != nil {
+				return nil, err
+			}
+			if flags&^uint8(3) != 0 {
+				return nil, fmt.Errorf("invalid damage flags %d", flags)
+			}
+			results = append(results, DamageAppliedResult{AttackerID: attackerID, TargetType: targetType, TargetID: targetID, Amount: int(amount), RemainingHP: int(remainingHP), Critical: flags&1 != 0, Death: flags&2 != 0})
+		}
+		return DamageAppliedBatchPayload{Results: results}, nil
+	case TypeUpgradeOffered:
+		offerID, err := d.u32()
+		if err != nil {
+			return nil, err
+		}
+		sourceID, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		source, err := decodeUpgradeSource(sourceID)
+		if err != nil {
+			return nil, err
+		}
+		teamLevel, err := d.u16()
+		if err != nil {
+			return nil, err
+		}
+		deadlineMs, err := d.i64()
+		if err != nil {
+			return nil, err
+		}
+		pendingCount, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		totalCount, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		selected, err := d.bool()
+		if err != nil {
+			return nil, err
+		}
+		choiceCount, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		if choiceCount != maxUpgradeChoices || pendingCount > totalCount || totalCount == 0 {
+			return nil, fmt.Errorf("upgrade offer counts are invalid")
+		}
+		choices := make([]UpgradeChoice, 0, choiceCount)
+		for range choiceCount {
+			attribute, err := d.string()
+			if err != nil {
+				return nil, err
+			}
+			currentValue, err := d.f32()
+			if err != nil {
+				return nil, err
+			}
+			addedValue, err := d.f32()
+			if err != nil {
+				return nil, err
+			}
+			finalValue, err := d.f32()
+			if err != nil {
+				return nil, err
+			}
+			choices = append(choices, UpgradeChoice{Attribute: attribute, CurrentValue: currentValue, AddedValue: addedValue, FinalValue: finalValue})
+		}
+		return UpgradeOfferedPayload{OfferID: uint64(offerID), Source: source, TeamLevel: int(teamLevel), DeadlineMs: deadlineMs, PendingCount: int(pendingCount), TotalCount: int(totalCount), Selected: selected, Choices: choices}, nil
 	case TypeUpgradeApplied:
 		playerID, err := d.string()
 		if err != nil {
@@ -1363,6 +1578,28 @@ func encodeRemovalReason(value string) (uint8, error) {
 		return 4, nil
 	default:
 		return 0, fmt.Errorf("unknown projectile removal reason %q", value)
+	}
+}
+
+func encodeDamageTargetType(value string) (uint8, error) {
+	switch value {
+	case "monster":
+		return 0, nil
+	case "player":
+		return 1, nil
+	default:
+		return 0, fmt.Errorf("unknown damage target type %q", value)
+	}
+}
+
+func decodeDamageTargetType(value uint8) (string, error) {
+	switch value {
+	case 0:
+		return "monster", nil
+	case 1:
+		return "player", nil
+	default:
+		return "", fmt.Errorf("unknown damage target type %d", value)
 	}
 }
 

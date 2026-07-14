@@ -10,21 +10,25 @@ const Version uint8 = 2
 type MessageType uint8
 
 const (
-	TypeJoinRoom          MessageType = 1
-	TypeLeaveRoom         MessageType = 2
-	TypePing              MessageType = 3
-	TypeInput             MessageType = 4
-	TypeJoined            MessageType = 64
-	TypeRoomState         MessageType = 65
-	TypeMatchStarted      MessageType = 66
-	TypeSnapshot          MessageType = 67
-	TypeProjectileSpawned MessageType = 68
-	TypeProjectileRemoved MessageType = 69
-	TypeMatchEnded        MessageType = 70
-	TypePong              MessageType = 71
-	TypeUpgradeApplied    MessageType = 76
-	TypeError             MessageType = 126
-	TypeServerClosed      MessageType = 127
+	TypeJoinRoom           MessageType = 1
+	TypeLeaveRoom          MessageType = 2
+	TypePing               MessageType = 3
+	TypeInput              MessageType = 4
+	TypeSelectUpgrade      MessageType = 5
+	TypeDebugLevelUp       MessageType = 7
+	TypeJoined             MessageType = 64
+	TypeRoomState          MessageType = 65
+	TypeMatchStarted       MessageType = 66
+	TypeSnapshot           MessageType = 67
+	TypeProjectileSpawned  MessageType = 68
+	TypeProjectileRemoved  MessageType = 69
+	TypeMatchEnded         MessageType = 70
+	TypePong               MessageType = 71
+	TypeDamageAppliedBatch MessageType = 74
+	TypeUpgradeOffered     MessageType = 75
+	TypeUpgradeApplied     MessageType = 76
+	TypeError              MessageType = 126
+	TypeServerClosed       MessageType = 127
 )
 
 type Envelope struct {
@@ -51,6 +55,11 @@ type InputPayload struct {
 	Sequence uint64  `json:"sequence"`
 	MoveX    float64 `json:"moveX"`
 	MoveY    float64 `json:"moveY"`
+}
+
+type SelectUpgradePayload struct {
+	OfferID     uint64 `json:"offerId"`
+	ChoiceIndex int    `json:"choiceIndex"`
 }
 
 type PlayerState struct {
@@ -214,6 +223,38 @@ type ProjectileRemovedPayload struct {
 	Reason       string `json:"reason"`
 }
 
+type DamageAppliedResult struct {
+	AttackerID  string `json:"attackerId"`
+	TargetType  string `json:"targetType"`
+	TargetID    string `json:"targetId"`
+	Amount      int    `json:"amount"`
+	RemainingHP int    `json:"remainingHp"`
+	Critical    bool   `json:"critical"`
+	Death       bool   `json:"death"`
+}
+
+type DamageAppliedBatchPayload struct {
+	Results []DamageAppliedResult `json:"results"`
+}
+
+type UpgradeChoice struct {
+	Attribute    string  `json:"attribute"`
+	CurrentValue float64 `json:"currentValue"`
+	AddedValue   float64 `json:"addedValue"`
+	FinalValue   float64 `json:"finalValue"`
+}
+
+type UpgradeOfferedPayload struct {
+	OfferID      uint64          `json:"offerId"`
+	Source       string          `json:"source"`
+	TeamLevel    int             `json:"teamLevel"`
+	DeadlineMs   int64           `json:"deadlineMs"`
+	PendingCount int             `json:"pendingCount"`
+	TotalCount   int             `json:"totalCount"`
+	Selected     bool            `json:"selected"`
+	Choices      []UpgradeChoice `json:"choices"`
+}
+
 type MatchEndedPayload struct {
 	Outcome    string `json:"outcome"`
 	SurvivalMs int64  `json:"survivalMs"`
@@ -264,9 +305,9 @@ func (e Envelope) DecodePayload(target any) error {
 
 func (t MessageType) valid() bool {
 	switch t {
-	case TypeJoinRoom, TypeLeaveRoom, TypePing, TypeInput, TypeJoined, TypeRoomState,
+	case TypeJoinRoom, TypeLeaveRoom, TypePing, TypeInput, TypeSelectUpgrade, TypeDebugLevelUp, TypeJoined, TypeRoomState,
 		TypeMatchStarted, TypeSnapshot, TypeProjectileSpawned, TypeProjectileRemoved,
-		TypeMatchEnded, TypePong, TypeUpgradeApplied, TypeError, TypeServerClosed:
+		TypeMatchEnded, TypePong, TypeDamageAppliedBatch, TypeUpgradeOffered, TypeUpgradeApplied, TypeError, TypeServerClosed:
 		return true
 	default:
 		return false

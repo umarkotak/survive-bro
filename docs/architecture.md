@@ -6,7 +6,7 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 
 ## Client boundaries
 
-- React owns persisted username setup, room browsing/creation, HUD, connection state, results, and the touch joystick overlay. Room-browser polling is response-driven: only one room-list request may be in flight, and the next request is scheduled after the prior request settles.
+- React owns the persisted local callsign profile, room browsing/creation, HUD, connection state, results, and the touch joystick overlay. Room-browser polling is response-driven: only one room-list request may be in flight, and the next request is scheduled after the prior request settles.
 - Phaser owns the map, entities, camera, interpolation, local prediction, pooling, and visual effects.
 - `NetworkClient` owns socket lifecycle, envelopes, heartbeat, reconnect, decoding, and subscriptions.
 - `MultiplayerSession` owns room, identity, connection, match, and result state.
@@ -17,7 +17,9 @@ The complete MVP runs as one static browser client plus one Go process. Redis an
 
 Routes:
 
-- `/`: username setup, room browser, level selection during room creation, gameplay, and scored results. The browser lists rooms over HTTP and idempotently ensures the selected room/level before opening one socket.
+- `/`: cinematic main menu, local callsign login, account summary, and a dismissible room-browser overlay. Opening the lobby does not navigate; it hides the other menu controls while active. Room polling begins only while this overlay is visible. This profile remains device-local and does not introduce a backend account system.
+- `/lobby`: legacy direct-entry compatibility only; it is normalized to `/` and opens the room-browser overlay when a saved callsign exists.
+- `/armory`: reserved client placeholder; persistent armory behavior remains out of scope.
 
 ## Server boundaries
 
@@ -35,11 +37,13 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Planned lobby/countdown/rematch transitions remain deferred.
+The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Level-up and treasure rewards enter a room-owned synchronized phase: simulation elapsed time and entity updates freeze, each player receives a private three-card offer, and a wall-clock deadline continues through the pause. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 
 Use a 50 ms fixed step and server time only. Send snapshots every second tick. Per tick:
+
+When a reward phase is active, increment only the replication tick, resolve selections or the `50`-second deadline, and skip the normal operation order below. React blocks the world with the choice overlay and Phaser skips prediction, interpolation, and projectile extrapolation until the owning player's authoritative `upgrade_applied` arrives.
 
 1. Drain commands.
 2. Apply latest inputs.
@@ -79,6 +83,8 @@ The browser sets `binaryType = "arraybuffer"` and decodes frames directly with `
 The target content model is one global glossary covering attributes, modifiers, characters, spells, buffs, enemies, levels/events, and future artifacts. Each player has five spell slots and five buff slots. Spell/buff levels resolve through the shared modifier engine; clients never calculate authoritative inventory effects.
 
 Spell definitions are reusable by players and enemies. Enemy spell loadouts select server-owned attacks; enemy projectiles target players and use the same bounded projectile lifecycle without transferring combat authority to clients.
+
+Authoritative enemy damage results are emitted once per tick through binary message `74 damage_applied_batch`, chunked to at most `256` results per frame. Phaser uses monster-target results for bounded, pooled floating damage text. Snapshots remain the authority for lasting HP state; damage events are presentation input only.
 
 `game-data/game.json` is the single editable content source. The server reads it once at startup; characters, spells, enemies, and levels are decoded with Sonic and fail startup on invalid required values, references, event types, ordering, or timing. Buffs, modifiers, and inventory remain design contracts until those gameplay systems are implemented. Public endpoints expose selection-safe data only.
 

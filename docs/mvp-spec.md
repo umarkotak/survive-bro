@@ -4,7 +4,7 @@ This document extracts the binding product rules from the initial design brief. 
 
 ## Product
 
-Build a browser-first, cooperative, top-down survival game for one to six anonymous players. Level 1 lasts six minutes. The team wins if at least one player is alive when the level-ending event fires and loses when all players are dead.
+Build a browser-first, cooperative, top-down survival game for one to six anonymous players. Level 1 lasts fifteen minutes. The team wins if at least one player is alive when the level-ending event fires and loses when all players are dead.
 
 Controls:
 
@@ -15,11 +15,12 @@ Controls:
 
 ## Player journey
 
-1. Set a display name, persisted on the device.
-2. Browse joinable rooms or create a generated five-letter room after selecting a level.
-3. Select a character, then join immediately. Ranger is the first implemented character; up to five more players may join the same match.
-4. Survive until the level-ending event or lose when every player dies.
-5. View the shared result and return to room entry.
+1. Open the Heavy Armament main menu and set a local callsign if one is not already saved on the device.
+2. Choose `Play` to open the dismissible lobby overlay without leaving the main-menu scene.
+3. Browse joinable rooms or create a generated five-letter room after selecting a level.
+4. Select a character, then join immediately; up to five more players may join the same match.
+5. Survive until the level-ending event or lose when every player dies.
+6. View the shared result and return to room entry.
 
 ## Room rules
 
@@ -45,7 +46,7 @@ Controls:
 | Spawn centre | 1600, 900 |
 | Spawn radius | 80 units |
 
-Friendly fire, player collision, revive, and pause are disabled. Dead players cannot act. When a teammate is outside the local camera, the client shows an edge marker pointing toward their rough location.
+Friendly fire, player collision, revive, and player-controlled pausing are disabled. The authoritative room does enter a synchronized reward pause for level-up and treasure choices. Dead players cannot act. When a teammate is outside the local camera, the client shows an edge marker pointing toward their rough location.
 
 ## Initial content
 
@@ -85,13 +86,19 @@ All source sprites face right. Horizontal movement sets facing; vertical movemen
 - Stage 1 (`0:00`): HP `60`, speed `80`, contact damage `10`, radius `24`, XP `1`.
 - Stage 2 (`1:00`): replaces normal Stage 1 spawns; HP `90`, speed `92`, contact damage `16`, radius `30`, XP `2`.
 - Slime King base values are loaded from `game-data/game.json`: HP `2400` before event/global multipliers. Level 1 has meaningful boss encounters at `5:00`, `10:00`, and `14:00`; the first two guarantee treasure chests and only the final boss ends the level when killed. `15:00` remains the fixed fallback.
-- Slime King has Fireball in its enemy spell loadout. It fires at the nearest living player only within Fireball's configured `700`-unit range; projectiles respect configured speed/radius/range, rocks, player armor, and boss damage multipliers.
+- Every current Slime has the reusable `enemy-slime-ball` spell in its enemy loadout. Slime Ball deals base damage `18`, has a `1000 ms` cooldown, speed `360`, range `360`, and radius `12`. It targets the nearest living player only inside that short range; projectiles respect rocks, player armor, and boss damage multipliers. The client renders a red glob and a brief red player-hit effect, but the server remains authoritative.
 - While boss-event monsters are alive, compact cards below the top-right menu show the boss sprite and authoritative health. Concurrent bosses share the row as equal-width columns.
 - The opening deliberately ramps from small Slimes into mixed waves so early XP produces upgrades before the first boss. Focused meteor acts run from `8:00–9:30` and `12:00–14:00`, separated by boss/reward and escalation beats. At `15:00`, the fixed end event remains a fallback and clients show the final score.
 - Every Slime targets the nearest living player, moves directly, slides around obstacles, and drops XP on death.
 - Monsters use soft local separation: nearby enemies gently push apart while retaining substantial overlap and continuing to pursue players. Separation is not rigid-body collision and does not block the swarm.
 - Enemy armor is flat damage reduction applied independently to projectile impact, normal projectile, beam, and explosion hits. All current enemies default to armor `1`; a valid hit always deals at least `1` damage.
 - Every non-ending boss-event kill drops a power crate regardless of the normal every-12-kills crate cadence.
+- Every authoritative projectile, impact, beam, or lingering-explosion hit on an enemy emits a bounded binary damage result. Clients show a small red floating damage value at that enemy; the number is cosmetic and never feeds hit detection.
+
+### Manual test content
+
+- `dummy-tester` is a durable selectable character using Ranger visuals and Fireball. It has `1000` HP, `75%` armor, speed `260`, regeneration `10 HP/s`, and pickup radius `160`.
+- `test-boss` is a ten-minute Boss Damage Lab. One Slime King spawns at the beginning with `1000×` base health while a continuous mixed Stage 1/Stage 2 swarm runs at `1.2/sec` with a base cap of `35`. The HUD exposes a test-only **Auto level up** button that advances the team level and opens the normal synchronized reward choice.
 
 ### Meadow
 
@@ -117,17 +124,17 @@ At `3:00`, existing and future enemies receive a persistent `1.5×` HP multiplie
 
 ## Experience and upgrades
 
-Experience and team level are shared. Threshold: `round(8 + 5 * level^1.45)`. Attributes are individual. On every team level, each player receives one independently random eligible upgrade. When any living player collects a power crate, every player receives one independently random eligible treasure upgrade. Gameplay never pauses.
+Experience and team level are shared. Threshold: `round(8 + 5 * level^1.45)`. Attributes and reward cards are individual. Every team level and collected power crate pauses the authoritative room and gives every current player three unique eligible choices rolled independently for that player. Number keys `1–3` and touch/click select a card. The room resumes when everyone has selected or after `50` wall-clock seconds; each unresolved player receives their own first offered card. A player joining during the phase receives a new personal offer and joins the pending count, while leaving removes that requirement. No level-up or treasure upgrade is granted immediately.
 
 XP crystals inside the fixed `120`-unit pickup radius move toward the nearest living player at `900` units/second and collect at `32` units. Every twelfth team kill drops a power crate.
 
 Random effects are: max health `+20` and heal `20`; armor `+5` percentage points (cap `60%`); movement speed `+8%` base (cap `+80%`); regeneration `+1 HP/s`; attack buff `+10%`; cooldown reduction `+8` percentage points (cap `60%`); Fireball damage `+4`; projectile speed `+70`; burst `+1` (cap `2`); or directions `+1` (cap `4`). Capped upgrades are removed from the eligible roll.
 
-Every applied personal upgrade emits an authoritative event identifying whether it came from a team level-up or treasure chest. The owning client shows a temporary top-centre notification and keeps an in-memory history for the current run.
+Offers and validation remain server-authoritative: stale offer IDs, duplicate selections, and indexes outside the offered cards are rejected. Every applied personal upgrade emits an authoritative event identifying whether it came from a team level-up or treasure chest. The owning client shows a temporary top-centre notification and keeps an in-memory history for the current run.
 
 ### Inventory target
 
-The accepted replacement for direct random attribute upgrades is a player inventory with at most five spells and five buffs. Ranger starts with Fireball level 1. A level-up or treasure reward adds an eligible unowned entry at level 1 or increases an owned entry by one deterministic level. Full inventories exclude unowned entries; max-level entries are excluded. Detailed modifier ordering and the runtime migration gate live in `inventory-and-modifiers.md`. Until that gate lands, the existing direct random attribute implementation remains the current runtime behavior.
+The accepted future replacement for direct attribute upgrades is a player inventory with at most five spells and five buffs. Ranger starts with Fireball level 1. A level-up or treasure reward adds an eligible unowned entry at level 1 or increases an owned entry by one deterministic level. Full inventories exclude unowned entries; max-level entries are excluded. Detailed modifier ordering and the runtime migration gate live in `inventory-and-modifiers.md`. Until that gate lands, the synchronized three-card attribute-choice implementation remains the current runtime behavior.
 
 ## Reliability and security
 

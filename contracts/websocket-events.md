@@ -44,6 +44,8 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 | `2` | C→S | `leave_room` |
 | `3` | C→S | `ping` |
 | `4` | C→S | `input` |
+| `5` | C→S | `select_upgrade` |
+| `7` | C→S | `debug_level_up` |
 | `64` | S→C | `joined` |
 | `65` | S→C | `room_state` |
 | `66` | S→C | `match_started` |
@@ -52,6 +54,8 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 | `69` | S→C | `projectile_removed` |
 | `70` | S→C | `match_ended` |
 | `71` | S→C | `pong` |
+| `74` | S→C | `damage_applied_batch` |
+| `75` | S→C | `upgrade_offered` |
 | `76` | S→C | `upgrade_applied` |
 | `126` | S→C | `error` |
 | `127` | S→C | `server_shutdown` |
@@ -62,6 +66,8 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 - `leave_room`: empty.
 - `ping`: empty; request ID is echoed by `pong`.
 - `input`: `sequence u32`, `moveX f32`, `moveY f32`.
+- `select_upgrade`: `offerId u32`, `choiceIndex u8` (`0–2`). The server rejects stale offer IDs, duplicate selections, indexes outside the player's authoritative offer, and selection while no upgrade phase is active.
+- `debug_level_up`: empty. This development-only intent is accepted exclusively in a running `test-boss` room when no upgrade phase is active; it advances the shared team level and opens the normal synchronized upgrade flow.
 
 Display names are trimmed and contain 1–20 Unicode characters. Input sequence is increasing. Movement axes must be finite and within `[-1, 1]`; the server normalizes diagonals and stops stale input after 250 ms.
 
@@ -74,6 +80,8 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
 - Enemy-owned projectiles use `ownerId = "enemy:<monsterId>"`; clients render them normally and do not decide their hits.
 - `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`, `4 player_hit`.
+- `damage_applied_batch`: `count u16` (maximum `256`), then authoritative results. Each result is `attackerId string`, `targetType u8` (`0 monster`, `1 player`), `targetId string`, `amount u32`, `remainingHp u32`, `flags u8` (`bit0 critical`, `bit1 death`). Current runtime emits monster targets for projectile, impact, beam, and lingering-explosion damage. Clients may show cosmetic damage numbers but never infer or report hits from them.
+- `upgrade_offered`: `offerId u32`, `source u8` (`0 level_up`, `1 treasure_chest`), `teamLevel u16`, `deadlineMs i64`, `pendingCount u8`, `totalCount u8`, `flags u8` (`bit0 this player selected`), `choiceCount u8` (exactly `3`), then choices. Each choice is `attribute string`, `currentValue f32`, `addedValue f32`, `finalValue f32`. This message is private to its owning player and is resent when selection progress changes.
 - `match_ended`: `outcome u8` (`0 lost`, `1 won`), `survivalMs u32`, `teamLevel u16`, `totalKills u32`, `score u32`.
 - `pong`: empty.
 - `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs include player stats plus spell-specific projectile, beam, and explosion properties documented in `game-data/game.json`.
@@ -110,7 +118,7 @@ monsterCount u16
     id u32
     x f32, y f32
     typeId string
-    hp u16, maxHp u16
+    hp u32, maxHp u32
     flags u8 (bit 0 boss-event instance)
 beamCount u16
   repeated beam:
@@ -143,7 +151,7 @@ teamTotalKills u32
 remainingMs u32
 ```
 
-XP and team level are shared, but attributes are individual. Each team level independently rolls one eligible upgrade for every player. When any living player collects a power crate, every player independently rolls one eligible treasure upgrade. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
+XP and team level are shared, but attributes are individual. Each team level and collected power crate pauses authoritative simulation and gives every current player three independently generated eligible choices. The cards are rolled separately per player, so teammates need not see the same attributes. The phase resolves after everyone selects or after `50` seconds; unresolved players receive the first offered choice. No level-up or treasure upgrade is granted outside this selection phase. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 

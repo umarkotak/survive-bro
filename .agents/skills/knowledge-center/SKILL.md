@@ -21,6 +21,7 @@ Use repository evidence, not remembered assumptions.
 - Use `game-data/` for balance/content contracts. Treat top-level status `runtime` and sections explicitly named in `runtimeSections` as loaded implementation; remaining `design-contract` sections must be checked against code.
 - Use `docs/mvp-spec.md` for player-visible requirements and limits.
 - Use `docs/architecture.md` for ownership and invariants.
+- Use `docs/ui-design-direction.md` for frontend visual language, route presentation, and media behavior.
 - Use `docs/implementation-plan.md` for order and gates, not proof of completion.
 
 Call out contradictions that affect behavior, compatibility, security, or scope. Do not silently merge competing rules.

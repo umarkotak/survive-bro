@@ -1,44 +1,32 @@
 import Phaser from 'phaser'
 
+import { characterAssetPath, characterTextureKey, enemyAssetPath, enemyTextureKey, obstacleAssetPath, obstacleTextureKey, terrainAssetPath, terrainTextureKey, type CharacterFrame } from '../../config/assets'
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('BootScene')
   }
 
   preload(): void {
-    for (const asset of [
-      'character-ranger-attack-1',
-      'character-ranger-idle',
-      'character-ranger-walk-1',
-      'character-ranger-walk-2',
-      'character-ranger-walk-3',
-      'character-frieren-attack-1',
-      'character-frieren-idle',
-      'character-frieren-walk-1',
-      'character-frieren-walk-2',
-      'character-frieren-walk-3',
-      'character-catapult-attack-1',
-      'character-catapult-idle',
-      'character-catapult-walk-1',
-      'character-catapult-walk-2',
-      'character-catapult-walk-3',
-      'obstacle-large-rock-1',
-      'obstacle-large-rock-2',
-      'obstacle-large-rock-3',
-      'terrain-variant-1',
-      'terrain-variant-2',
-      'terrain-variant-3',
-      'enemy-slime-stage-1',
-      'enemy-slime-stage-2',
-      'enemy-slime-stage-3',
-    ]) {
-      this.load.image(asset, `/assets/${asset}.png`)
+    const characterFrames: CharacterFrame[] = ['idle', 'walk-1', 'walk-2', 'walk-3', 'attack-1']
+    for (const characterId of ['ranger', 'frieren', 'catapult']) {
+      for (const frame of characterFrames) {
+        this.load.image(characterTextureKey(characterId, frame), characterAssetPath(characterId, frame))
+      }
+    }
+    for (const enemyId of ['slime-stage-1', 'slime-stage-2', 'slime-stage-3']) {
+      this.load.image(enemyTextureKey(enemyId), enemyAssetPath(enemyId))
+    }
+    for (const variant of [1, 2, 3]) {
+      this.load.image(obstacleTextureKey(variant), obstacleAssetPath(variant))
+      this.load.image(terrainTextureKey(variant), terrainAssetPath(variant))
     }
   }
 
   create(): void {
     this.createShadowTexture()
     this.createBoltTexture()
+    this.createEnemySlimeBallTexture()
     this.createRocketTextures()
     this.createExperienceTexture()
     this.createPowerCrateTexture()
@@ -63,6 +51,18 @@ export class BootScene extends Phaser.Scene {
     graphics.fillStyle(0xffffff, 1)
     graphics.fillEllipse(27, 12, 21, 7)
     graphics.generateTexture('arc-bolt', 48, 24)
+    graphics.destroy()
+  }
+
+  private createEnemySlimeBallTexture(): void {
+    const graphics = this.make.graphics({ x: 0, y: 0 })
+    graphics.fillStyle(0x7a0612, 0.3)
+    graphics.fillCircle(14, 14, 14)
+    graphics.fillStyle(0xd92938, 1)
+    graphics.fillCircle(14, 14, 10)
+    graphics.fillStyle(0xff7b72, 0.9)
+    graphics.fillCircle(10, 10, 4)
+    graphics.generateTexture('enemy-slime-ball', 28, 28)
     graphics.destroy()
   }
 
