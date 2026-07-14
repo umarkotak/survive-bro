@@ -18,7 +18,7 @@ interface MainMenuProps {
 export function MainMenu({ displayName, nameDraft, accountError, onNameDraftChange, onLogin, onLogout, onPlay, overlay, onDismissOverlay }: MainMenuProps) {
   const [videoReady, setVideoReady] = useState(false)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
-  const [soundEnabled, setSoundEnabled] = useState(menuMedia.soundEnabledByDefault)
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(menuMedia.soundEnabledByDefault)
   const videoRef = useRef<HTMLVideoElement>(null)
   const loginInputRef = useRef<HTMLInputElement>(null)
 
