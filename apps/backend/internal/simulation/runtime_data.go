@@ -33,13 +33,16 @@ type runtimeGameData struct {
 		SpriteSet      string `json:"spriteSet"`
 		DefaultSpellID string `json:"defaultSpellId"`
 		BaseAttributes struct {
-			MaxHealth          int     `json:"max_health"`
-			ArmorPercent       float64 `json:"armor_percent"`
-			MovementSpeed      float64 `json:"movement_speed"`
-			HealthRegeneration float64 `json:"health_regeneration"`
-			AttackBuffPercent  float64 `json:"attack_buff_percent"`
-			CooldownReduction  float64 `json:"cooldown_reduction_percent"`
-			PickupRadius       float64 `json:"pickup_radius"`
+			MaxHealth                    int     `json:"max_health"`
+			ArmorPercent                 float64 `json:"armor_percent"`
+			MovementSpeed                float64 `json:"movement_speed"`
+			HealthRegeneration           float64 `json:"health_regeneration"`
+			AttackBuffPercent            float64 `json:"attack_buff_percent"`
+			CooldownReduction            float64 `json:"cooldown_reduction_percent"`
+			PickupRadius                 float64 `json:"pickup_radius"`
+			ResurrectionDuration         float64 `json:"resurrection_duration"`
+			ResurrectionRadius           float64 `json:"resurrection_radius"`
+			ResurrectionImmunityDuration float64 `json:"resurrection_immunity_duration"`
 		} `json:"baseAttributes"`
 		StartingInventory struct {
 			Spells []struct {
@@ -158,7 +161,7 @@ func LoadRuntimeGameData(path string) error {
 	loadedCharacters := make(map[string]CharacterDefinition, len(source.Characters))
 	for id, value := range source.Characters {
 		a := value.BaseAttributes
-		if id == "" || value.Name == "" || value.SpriteSet == "" || a.MaxHealth <= 0 || a.MovementSpeed <= 0 || a.PickupRadius <= 0 {
+		if id == "" || value.Name == "" || value.SpriteSet == "" || a.MaxHealth <= 0 || a.MovementSpeed <= 0 || a.PickupRadius <= 0 || a.ResurrectionDuration <= 0 || a.ResurrectionRadius <= 0 || a.ResurrectionImmunityDuration <= 0 {
 			return fmt.Errorf("character %q has invalid required values", id)
 		}
 		if _, exists := loadedSpells[value.DefaultSpellID]; !exists {
@@ -174,7 +177,7 @@ func LoadRuntimeGameData(path string) error {
 		if len(spellIDs) == 0 {
 			return fmt.Errorf("character %q has no starting spell", id)
 		}
-		loadedCharacters[id] = CharacterDefinition{ID: id, Name: value.Name, SpriteID: value.SpriteSet, MaxHP: a.MaxHealth, ArmorPercent: a.ArmorPercent, MovementSpeed: a.MovementSpeed, HealthRegeneration: a.HealthRegeneration, AttackBuffPercent: a.AttackBuffPercent, CooldownPercent: a.CooldownReduction, PickupRadius: a.PickupRadius, DefaultSpellID: value.DefaultSpellID, StartingSpellIDs: spellIDs}
+		loadedCharacters[id] = CharacterDefinition{ID: id, Name: value.Name, SpriteID: value.SpriteSet, MaxHP: a.MaxHealth, ArmorPercent: a.ArmorPercent, MovementSpeed: a.MovementSpeed, HealthRegeneration: a.HealthRegeneration, AttackBuffPercent: a.AttackBuffPercent, CooldownPercent: a.CooldownReduction, PickupRadius: a.PickupRadius, ResurrectionDuration: time.Duration(a.ResurrectionDuration * float64(time.Second)), ResurrectionRadius: a.ResurrectionRadius, ResurrectionImmunityDuration: time.Duration(a.ResurrectionImmunityDuration * float64(time.Second)), DefaultSpellID: value.DefaultSpellID, StartingSpellIDs: spellIDs}
 	}
 	loadedEnemies := make(map[string]EnemyDefinition, len(source.Enemies))
 	for id, value := range source.Enemies {

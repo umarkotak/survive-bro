@@ -114,6 +114,12 @@ export interface SnapshotPlayer {
   alive: boolean
   lastProcessedInput: number
   kills: number
+  resurrectionDurationMs: number
+  resurrectionRadius: number
+  resurrectionImmunityDurationMs: number
+  resurrectionProgress: number
+  resurrectionPending: boolean
+  immunityRemainingMs: number
 }
 
 export interface SnapshotMonster {
@@ -150,6 +156,7 @@ export interface SnapshotPayload {
     experience: number
     experienceRequired: number
     totalKills: number
+    lives: number
   }
   remainingMs: number
 }
@@ -429,7 +436,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.f32(player.healthRegeneration)
     writer.f32(player.attackBuffPercent)
     writer.f32(player.cooldownPercent)
-    writer.u8(Number(player.facing === 'left') | (Number(player.alive) << 1))
+    writer.u8(Number(player.facing === 'left') | (Number(player.alive) << 1) | (Number(player.resurrectionPending) << 2))
     writer.u16(player.hp)
     writer.u16(player.maxHp)
     writer.u16(player.spellDamage)
@@ -438,6 +445,11 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.u8(player.spellDirections)
     writer.u32(player.lastProcessedInput)
     writer.u32(player.kills)
+    writer.u32(player.resurrectionDurationMs)
+    writer.f32(player.resurrectionRadius)
+    writer.u32(player.resurrectionImmunityDurationMs)
+    writer.f32(player.resurrectionProgress)
+    writer.u32(player.immunityRemainingMs)
   }
   writer.u16(payload.monsters.length)
   for (const monster of payload.monsters) {
@@ -466,6 +478,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   writer.u16(payload.team.experience)
   writer.u16(payload.team.experienceRequired)
   writer.u32(payload.team.totalKills)
+  writer.u8(payload.team.lives)
   writer.u32(payload.remainingMs)
 }
 
@@ -625,12 +638,13 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     const attackBuffPercent = reader.f32()
     const cooldownPercent = reader.f32()
     const flags = reader.u8()
-    if ((flags & ~3) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
+    if ((flags & ~7) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
     players.push({
       id, displayName, characterId, x, y, velocityX, velocityY, movementSpeed, armorPercent, healthRegeneration, attackBuffPercent, cooldownPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
       alive: (flags & 2) !== 0, hp: reader.u16(), maxHp: reader.u16(),
       spellDamage: reader.u16(), projectileSpeed: reader.f32(), spellBurst: reader.u8(), spellDirections: reader.u8(),
-      lastProcessedInput: reader.u32(), kills: reader.u32(),
+      lastProcessedInput: reader.u32(), kills: reader.u32(), resurrectionDurationMs: reader.u32(), resurrectionRadius: reader.f32(),
+      resurrectionImmunityDurationMs: reader.u32(), resurrectionProgress: reader.f32(), resurrectionPending: (flags & 4) !== 0, immunityRemainingMs: reader.u32(),
     })
   }
   const monsterCount = reader.u16()
@@ -670,7 +684,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     meteors,
     pickups,
     team: {
-      level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(),
+      level: reader.u16(), experience: reader.u16(), experienceRequired: reader.u16(), totalKills: reader.u32(), lives: reader.u8(),
     },
     remainingMs: reader.u32(),
   }

@@ -25,18 +25,21 @@ type SpellDefinition struct {
 }
 
 type CharacterDefinition struct {
-	ID                 string
-	Name               string
-	SpriteID           string
-	MaxHP              int
-	ArmorPercent       float64
-	MovementSpeed      float64
-	HealthRegeneration float64
-	AttackBuffPercent  float64
-	CooldownPercent    float64
-	PickupRadius       float64
-	DefaultSpellID     string
-	StartingSpellIDs   []string
+	ID                           string
+	Name                         string
+	SpriteID                     string
+	MaxHP                        int
+	ArmorPercent                 float64
+	MovementSpeed                float64
+	HealthRegeneration           float64
+	AttackBuffPercent            float64
+	CooldownPercent              float64
+	PickupRadius                 float64
+	ResurrectionDuration         time.Duration
+	ResurrectionRadius           float64
+	ResurrectionImmunityDuration time.Duration
+	DefaultSpellID               string
+	StartingSpellIDs             []string
 }
 
 type EnemyDefinition struct {
@@ -123,9 +126,9 @@ var spells = map[string]SpellDefinition{
 }
 
 var characters = map[string]CharacterDefinition{
-	"ranger":   {ID: "ranger", Name: "Ranger", SpriteID: "character-ranger", MaxHP: 100, MovementSpeed: 220, PickupRadius: 120, DefaultSpellID: "fireball", StartingSpellIDs: []string{"fireball"}},
-	"frieren":  {ID: "frieren", Name: "Frieren", SpriteID: "character-frieren", MaxHP: 90, MovementSpeed: 210, PickupRadius: 125, DefaultSpellID: "soul-track", StartingSpellIDs: []string{"soul-track"}},
-	"catapult": {ID: "catapult", Name: "Catapult", SpriteID: "character-catapult", MaxHP: 115, MovementSpeed: 195, PickupRadius: 115, DefaultSpellID: "rocket", StartingSpellIDs: []string{"rocket"}},
+	"ranger":   {ID: "ranger", Name: "Ranger", SpriteID: "character-ranger", MaxHP: 100, MovementSpeed: 220, PickupRadius: 120, ResurrectionDuration: 2 * time.Second, ResurrectionRadius: 120, ResurrectionImmunityDuration: 5 * time.Second, DefaultSpellID: "fireball", StartingSpellIDs: []string{"fireball"}},
+	"frieren":  {ID: "frieren", Name: "Frieren", SpriteID: "character-frieren", MaxHP: 90, MovementSpeed: 210, PickupRadius: 125, ResurrectionDuration: 2 * time.Second, ResurrectionRadius: 120, ResurrectionImmunityDuration: 5 * time.Second, DefaultSpellID: "soul-track", StartingSpellIDs: []string{"soul-track"}},
+	"catapult": {ID: "catapult", Name: "Catapult", SpriteID: "character-catapult", MaxHP: 115, MovementSpeed: 195, PickupRadius: 115, ResurrectionDuration: 2 * time.Second, ResurrectionRadius: 120, ResurrectionImmunityDuration: 5 * time.Second, DefaultSpellID: "rocket", StartingSpellIDs: []string{"rocket"}},
 }
 
 var enemies = map[string]EnemyDefinition{

@@ -113,28 +113,34 @@ type SystemEvent struct {
 }
 
 type SnapshotPlayer struct {
-	ID                 string  `json:"id"`
-	DisplayName        string  `json:"displayName"`
-	CharacterID        string  `json:"characterId"`
-	X                  float64 `json:"x"`
-	Y                  float64 `json:"y"`
-	VelocityX          float64 `json:"velocityX"`
-	VelocityY          float64 `json:"velocityY"`
-	MovementSpeed      float64 `json:"movementSpeed"`
-	ArmorPercent       float64 `json:"armorPercent"`
-	HealthRegeneration float64 `json:"healthRegeneration"`
-	AttackBuffPercent  float64 `json:"attackBuffPercent"`
-	CooldownPercent    float64 `json:"cooldownPercent"`
-	SpellDamage        int     `json:"spellDamage"`
-	ProjectileSpeed    float64 `json:"projectileSpeed"`
-	SpellBurst         int     `json:"spellBurst"`
-	SpellDirections    int     `json:"spellDirections"`
-	Facing             string  `json:"facing"`
-	HP                 int     `json:"hp"`
-	MaxHP              int     `json:"maxHp"`
-	Alive              bool    `json:"alive"`
-	LastProcessedInput uint64  `json:"lastProcessedInput"`
-	Kills              int     `json:"kills"`
+	ID                             string  `json:"id"`
+	DisplayName                    string  `json:"displayName"`
+	CharacterID                    string  `json:"characterId"`
+	X                              float64 `json:"x"`
+	Y                              float64 `json:"y"`
+	VelocityX                      float64 `json:"velocityX"`
+	VelocityY                      float64 `json:"velocityY"`
+	MovementSpeed                  float64 `json:"movementSpeed"`
+	ArmorPercent                   float64 `json:"armorPercent"`
+	HealthRegeneration             float64 `json:"healthRegeneration"`
+	AttackBuffPercent              float64 `json:"attackBuffPercent"`
+	CooldownPercent                float64 `json:"cooldownPercent"`
+	SpellDamage                    int     `json:"spellDamage"`
+	ProjectileSpeed                float64 `json:"projectileSpeed"`
+	SpellBurst                     int     `json:"spellBurst"`
+	SpellDirections                int     `json:"spellDirections"`
+	Facing                         string  `json:"facing"`
+	HP                             int     `json:"hp"`
+	MaxHP                          int     `json:"maxHp"`
+	Alive                          bool    `json:"alive"`
+	LastProcessedInput             uint64  `json:"lastProcessedInput"`
+	Kills                          int     `json:"kills"`
+	ResurrectionDurationMs         int64   `json:"resurrectionDurationMs"`
+	ResurrectionRadius             float64 `json:"resurrectionRadius"`
+	ResurrectionImmunityDurationMs int64   `json:"resurrectionImmunityDurationMs"`
+	ResurrectionProgress           float64 `json:"resurrectionProgress"`
+	ResurrectionPending            bool    `json:"resurrectionPending"`
+	ImmunityRemainingMs            int64   `json:"immunityRemainingMs"`
 }
 
 type SnapshotMonster struct {
@@ -190,6 +196,7 @@ type SnapshotTeam struct {
 	Experience         int     `json:"experience"`
 	ExperienceRequired int     `json:"experienceRequired"`
 	TotalKills         int     `json:"totalKills"`
+	Lives              int     `json:"lives"`
 	ProjectileCount    int     `json:"projectileCount,omitempty"`
 	PickupRadius       float64 `json:"pickupRadius,omitempty"`
 }

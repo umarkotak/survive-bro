@@ -105,7 +105,7 @@ playerCount u8
     healthRegeneration f32
     attackBuffPercent f32
     cooldownPercent f32
-    flags u8 (bit0 facing-left, bit1 alive)
+    flags u8 (bit0 facing-left, bit1 alive, bit2 resurrection pending)
     hp u32, maxHp u32
     spellDamage u16
     projectileSpeed f32
@@ -113,6 +113,11 @@ playerCount u8
     spellDirections u8
     lastProcessedInput u32
     kills u32
+    resurrectionDurationMs u32
+    resurrectionRadius f32
+    resurrectionImmunityDurationMs u32
+    resurrectionProgress f32 (0..1)
+    immunityRemainingMs u32
 monsterCount u16
   repeated monster:
     id u32
@@ -148,10 +153,11 @@ teamLevel u16
 teamExperience u16
 teamExperienceRequired u16
 teamTotalKills u32
+teamLives u8
 remainingMs u32
 ```
 
-XP and team level are shared, but attributes are individual. Each team level and collected power crate pauses authoritative simulation and gives every current player three independently generated eligible choices. The cards are rolled separately per player, so teammates need not see the same attributes. The phase resolves after everyone selects or after `50` seconds; unresolved players receive the first offered choice. No level-up or treasure upgrade is granted outside this selection phase. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
+XP, team level, and lives are shared, but player attributes are individual. Each join adds one life up to six. A pending resurrection reserves a life and successful resurrection consumes it. The server advances solo progress automatically; in multiplayer it advances only while a living teammate is within `resurrectionRadius`, resets otherwise, restores 50% max HP, and publishes the remaining immunity window. Each team level and collected power crate pauses authoritative simulation and gives every current player three independently generated eligible choices. The cards are rolled separately per player, so teammates need not see the same attributes. The phase resolves after everyone selects or after `50` seconds; unresolved players receive the first offered choice. No level-up or treasure upgrade is granted outside this selection phase. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 

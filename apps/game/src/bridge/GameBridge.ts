@@ -27,6 +27,7 @@ export interface GameHudState {
   enemies: number
   bosses: BossHudState[]
   playerCount: number
+  lives: number
   roomName: string
   levelId: string
   playerId: string
@@ -37,6 +38,9 @@ export interface GameHudState {
   armorPercent: number
   movementSpeed: number
   healthRegeneration: number
+  resurrectionDurationMs: number
+  resurrectionRadius: number
+  resurrectionImmunityDurationMs: number
   attackBuffPercent: number
   cooldownPercent: number
   spellDamage: number
@@ -83,6 +87,7 @@ const initialState: GameHudState = {
   enemies: 0,
   bosses: [],
   playerCount: 1,
+  lives: 1,
   roomName: '',
   levelId: '',
   playerId: '',
@@ -93,6 +98,9 @@ const initialState: GameHudState = {
   armorPercent: 0,
   movementSpeed: 220,
   healthRegeneration: 0,
+  resurrectionDurationMs: 2000,
+  resurrectionRadius: 120,
+  resurrectionImmunityDurationMs: 5000,
   attackBuffPercent: 0,
   cooldownPercent: 0,
   spellDamage: 20,

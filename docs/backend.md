@@ -13,7 +13,7 @@ The backend foundation and initial room transport are implemented in `apps/backe
 - Public room listing plus idempotent named-room creation/lookup and inspection.
 - One actor goroutine per room.
 - Binary protocol-v2 WebSocket join, identity, ping/pong, input, snapshots, bounded writer queues, origin allowlist, and join/message limits.
-- Authoritative 20 Hz movement, data-driven levels and timed events, per-player spell attributes, armor-reduced damage, regeneration, shared XP, synchronized per-player three-card level/chest choices with a 50-second fallback, score, and 10 Hz snapshots.
+- Authoritative 20 Hz movement, data-driven levels and timed events, per-player spell and resurrection attributes, pooled team lives, solo/proximity resurrection with post-revive immunity, armor-reduced damage, regeneration, shared XP, synchronized per-player three-card level/chest choices with a 50-second fallback, score, and 10 Hz snapshots.
 - Late joins into one shared battlefield, with a real two-client integration test.
 - Graceful readiness, room notification, and HTTP shutdown.
 

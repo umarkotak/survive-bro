@@ -158,7 +158,7 @@ func BenchmarkDecodeSnapshotSonicJSON(b *testing.B) {
 func benchmarkSnapshot() SnapshotPayload {
 	snapshot := SnapshotPayload{
 		Tick: 4200, ServerTimeMs: 1_780_000_000_000, RemainingMs: 180_000,
-		Team: SnapshotTeam{Level: 7, Experience: 42, ExperienceRequired: 77, TotalKills: 312},
+		Team: SnapshotTeam{Level: 7, Experience: 42, ExperienceRequired: 77, TotalKills: 312, Lives: 3},
 	}
 	for index := range 4 {
 		snapshot.Players = append(snapshot.Players, SnapshotPlayer{
@@ -167,6 +167,7 @@ func benchmarkSnapshot() SnapshotPayload {
 			AttackBuffPercent: 0.2, CooldownPercent: 0.16, SpellDamage: 28, ProjectileSpeed: 840, SpellBurst: 2, SpellDirections: 3,
 			Facing: "right", HP: 100, MaxHP: 100,
 			Alive: true, LastProcessedInput: uint64(1000 + index), Kills: 78,
+			ResurrectionDurationMs: 2000, ResurrectionRadius: 120, ResurrectionImmunityDurationMs: 5000,
 		})
 	}
 	for index := range 150 {

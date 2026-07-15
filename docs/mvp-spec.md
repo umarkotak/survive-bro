@@ -19,7 +19,7 @@ Controls:
 2. Choose `Play` to open the dismissible lobby overlay without leaving the main-menu scene.
 3. Browse joinable rooms or create a generated five-letter room after selecting a level.
 4. Select a character, then join immediately; up to five more players may join the same match.
-5. Survive until the level-ending event or lose when every player dies.
+5. Survive until the level-ending event. A dead solo player resurrects automatically while a dead squad member requires a living teammate nearby; the squad loses when nobody can complete a resurrection.
 6. View the shared result and return to room entry.
 
 ## Room rules
@@ -45,8 +45,13 @@ Controls:
 | Rendering | Up to 60 FPS |
 | Spawn centre | 1600, 900 |
 | Spawn radius | 80 units |
+| Team lives added per joining player | 1 (maximum 6) |
+| Resurrection duration | 2 seconds |
+| Resurrection radius | 120 units |
+| Resurrection health | 50% max HP |
+| Resurrection immunity | 5 seconds |
 
-Friendly fire, player collision, revive, and player-controlled pausing are disabled. The authoritative room does enter a synchronized reward pause for level-up and treasure choices. Dead players cannot act. When a teammate is outside the local camera, the client shows an edge marker pointing toward their rough location.
+Friendly fire, player collision, and player-controlled pausing are disabled. The authoritative room does enter a synchronized reward pause for level-up and treasure choices. Dead players cannot act. Each newly joined player adds one shared team life, capped at six. A life is reserved when a dead player enters resurrection and consumed when resurrection completes. Solo resurrection progresses automatically; with multiple players it progresses only while a living teammate remains inside the dead player's resurrection radius, and resets when no teammate is in range. A full squad wipe still loses because no living teammate can complete a multiplayer resurrection. When a teammate is outside the local camera, the client shows an edge marker pointing toward their rough location.
 
 ## Initial content
 
@@ -153,4 +158,4 @@ Return survival time, team level, total kills, and per-player damage dealt, dama
 
 ## Explicit non-goals
 
-Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, chat, PvP, gamepads, additional maps, unlocks, cosmetics, equipment, procedural maps, revive, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.
+Do not add P2P/WebRTC, accounts, OAuth, databases, Redis, matchmaking, chat, PvP, gamepads, additional maps, unlocks, cosmetics, equipment, procedural maps, voice, Kubernetes, microservices, Protobuf, replay, or client-side anti-cheat beyond server authority. The accepted realtime transport is the custom binary WebSocket v2 contract.

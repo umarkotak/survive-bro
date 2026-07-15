@@ -42,6 +42,10 @@ interface PlayerView {
   walkElapsed: number
   attackUntil: number
   characterId: string
+  resurrectionZone: Phaser.GameObjects.Arc
+  resurrectionRing: Phaser.GameObjects.Graphics
+  resurrectionLabel: Phaser.GameObjects.Text
+  immunityHalo: Phaser.GameObjects.Arc
 }
 
 interface MonsterView {
@@ -242,6 +246,8 @@ export class GameScene extends Phaser.Scene {
       view.targetY = player.y
       view.movementSpeed = player.movementSpeed
       view.moving = Math.hypot(player.velocityX, player.velocityY) > 1
+      this.updateResurrectionView(view, player, snapshot.players.length)
+      view.immunityHalo.setVisible(player.alive && player.immunityRemainingMs > 0)
 
       if (player.id === localPlayerId) {
         const error = Phaser.Math.Distance.Between(view.sprite.x, view.sprite.y, player.x, player.y)
@@ -275,12 +281,16 @@ export class GameScene extends Phaser.Scene {
         experienceRequired: snapshot.team.experienceRequired,
         remainingMs: snapshot.remainingMs,
         kills: snapshot.team.totalKills,
+        lives: snapshot.team.lives,
         enemies: snapshot.monsters.length,
         bosses: snapshot.monsters.filter((monster) => monster.isBoss).map((monster) => ({ id: monster.id, name: enemyDisplayName(monster.typeId), spriteId: `enemy-${monster.typeId}`, hp: monster.hp, maxHp: monster.maxHp })),
         playerCount: snapshot.players.length,
         armorPercent: local.armorPercent,
         movementSpeed: local.movementSpeed,
         healthRegeneration: local.healthRegeneration,
+        resurrectionDurationMs: local.resurrectionDurationMs,
+        resurrectionRadius: local.resurrectionRadius,
+        resurrectionImmunityDurationMs: local.resurrectionImmunityDurationMs,
         attackBuffPercent: local.attackBuffPercent,
         cooldownPercent: local.cooldownPercent,
         spellDamage: local.spellDamage,
@@ -373,6 +383,10 @@ export class GameScene extends Phaser.Scene {
       view.sprite.setDepth(view.sprite.y)
       view.shadow.setPosition(view.sprite.x, view.sprite.y + 48).setDepth(view.sprite.y - 1)
       view.name.setPosition(view.sprite.x, view.sprite.y - 60).setDepth(view.sprite.y + 1)
+      view.resurrectionZone.setPosition(view.sprite.x, view.sprite.y).setDepth(view.sprite.y - 2)
+      view.resurrectionRing.setPosition(view.sprite.x, view.sprite.y).setDepth(view.sprite.y + 3)
+      view.resurrectionLabel.setPosition(view.sprite.x, view.sprite.y + 68).setDepth(view.sprite.y + 4)
+      view.immunityHalo.setPosition(view.sprite.x, view.sprite.y).setDepth(view.sprite.y + 2)
     }
   }
 
@@ -535,6 +549,10 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5)
 
     const indicator = isLocal ? null : this.createIndicator(player.displayName, color)
+    const resurrectionZone = this.add.circle(player.x, player.y, player.resurrectionRadius, 0x4cf0d2, 0.06).setStrokeStyle(3, 0x80ece0, 0.72).setVisible(false)
+    const resurrectionRing = this.add.graphics().setVisible(false)
+    const resurrectionLabel = this.add.text(player.x, player.y + 68, '', { fontFamily: 'Inter, system-ui, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#d9fff8', backgroundColor: 'rgba(5, 18, 16, 0.82)', padding: { x: 7, y: 3 } }).setOrigin(0.5).setVisible(false)
+    const immunityHalo = this.add.circle(player.x, player.y, 52, 0x80ece0, 0.08).setStrokeStyle(4, 0xb8fff6, 0.9).setVisible(false)
     const view: PlayerView = {
       sprite,
       shadow,
@@ -549,9 +567,25 @@ export class GameScene extends Phaser.Scene {
       walkElapsed: 0,
       attackUntil: 0,
       characterId: player.characterId,
+      resurrectionZone,
+      resurrectionRing,
+      resurrectionLabel,
+      immunityHalo,
     }
     this.players.set(player.id, view)
     return view
+  }
+
+  private updateResurrectionView(view: PlayerView, player: SnapshotPlayer, playerCount: number): void {
+    const visible = !player.alive && player.resurrectionPending
+    view.resurrectionZone.setVisible(visible).setRadius(player.resurrectionRadius)
+    view.resurrectionRing.setVisible(visible).clear()
+    view.resurrectionLabel.setVisible(visible)
+    if (!visible) return
+    const progress = Phaser.Math.Clamp(player.resurrectionProgress, 0, 1)
+    view.resurrectionRing.lineStyle(8, 0x80ece0, 0.96).beginPath().arc(0, 0, 48, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress, false).strokePath()
+    const mode = playerCount === 1 ? 'AUTO RESURRECTION' : 'RESURRECTION'
+    view.resurrectionLabel.setText(`${mode} ${Math.round(progress * 100)}%`)
   }
 
   private createIndicator(displayName: string, color: number): IndicatorView {
@@ -705,6 +739,10 @@ export class GameScene extends Phaser.Scene {
     view.sprite.destroy()
     view.shadow.destroy()
     view.name.destroy()
+    view.resurrectionZone.destroy()
+    view.resurrectionRing.destroy()
+    view.resurrectionLabel.destroy()
+    view.immunityHalo.destroy()
     view.indicator?.badge.destroy(true)
     view.indicator?.arrow.destroy()
   }

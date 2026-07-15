@@ -37,7 +37,7 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to six players may join the running match. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Level-up and treasure rewards enter a room-owned synchronized phase: simulation elapsed time and entity updates freeze, each player receives a private three-card offer, and a wall-clock deadline continues through the pause. Planned lobby/countdown/rematch transitions remain deferred.
+The first join starts immediately and up to six players may join the running match. Each join contributes one bounded shared team life. The room actor alone reserves lives, advances solo or proximity-assisted resurrection progress, restores health, and enforces post-resurrection immunity; clients render replicated state only. Character definitions own resurrection duration, radius, and immunity duration so this lifecycle remains data-driven. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Level-up and treasure rewards enter a room-owned synchronized phase: simulation elapsed time and entity updates freeze, each player receives a private three-card offer, and a wall-clock deadline continues through the pause. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 
@@ -48,14 +48,14 @@ When a reward phase is active, increment only the replication tick, resolve sele
 1. Drain commands.
 2. Apply latest inputs.
 3. Move players and resolve player/obstacle collisions.
-4. Update weapons and create attacks.
+4. Advance eligible resurrections, then update weapons and create attacks.
 5. Update projectiles.
 6. Move monsters and resolve obstacle collisions.
 7. Resolve attacks and contact damage.
 8. Process deaths and spawn XP.
 9. Attract nearby XP crystals, collect pickups and power crates, and process level-ups.
 10. Spawn monsters.
-11. Check win/loss.
+11. Check win/loss, treating a pending solo auto-resurrection as recoverable.
 12. Emit a snapshot when due.
 
 Allow no more than three catch-up ticks. Log `room_tick_overrun` with room, entity counts, and duration.

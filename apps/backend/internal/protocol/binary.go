@@ -535,6 +535,9 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		if player.Alive {
 			flags |= 2
 		}
+		if player.ResurrectionPending {
+			flags |= 4
+		}
 		e.u8(flags)
 		hp, err := nonNegativeUint16(player.HP, "player hp")
 		if err != nil {
@@ -572,6 +575,30 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 			return err
 		}
 		e.u32(kills)
+		resurrectionDuration, err := nonNegativeUint32(player.ResurrectionDurationMs, "resurrection duration ms")
+		if err != nil {
+			return err
+		}
+		e.u32(resurrectionDuration)
+		if err := e.f32(player.ResurrectionRadius); err != nil {
+			return err
+		}
+		immunityDuration, err := nonNegativeUint32(player.ResurrectionImmunityDurationMs, "resurrection immunity duration ms")
+		if err != nil {
+			return err
+		}
+		e.u32(immunityDuration)
+		if player.ResurrectionProgress < 0 || player.ResurrectionProgress > 1 {
+			return fmt.Errorf("resurrection progress is invalid")
+		}
+		if err := e.f32(player.ResurrectionProgress); err != nil {
+			return err
+		}
+		immunityRemaining, err := nonNegativeUint32(player.ImmunityRemainingMs, "immunity remaining ms")
+		if err != nil {
+			return err
+		}
+		e.u32(immunityRemaining)
 	}
 	if len(value.Monsters) > math.MaxUint16 {
 		return fmt.Errorf("monster count exceeds 65535")
@@ -734,6 +761,10 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 	e.u16(experience)
 	e.u16(required)
 	e.u32(kills)
+	if value.Team.Lives < 0 || value.Team.Lives > math.MaxUint8 {
+		return fmt.Errorf("team lives is invalid")
+	}
+	e.u8(uint8(value.Team.Lives))
 	e.u32(remaining)
 	return nil
 }
@@ -1431,13 +1462,17 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 	if err != nil {
 		return SnapshotPayload{}, err
 	}
+	lives, err := d.u8()
+	if err != nil {
+		return SnapshotPayload{}, err
+	}
 	remaining, err := d.u32()
 	if err != nil {
 		return SnapshotPayload{}, err
 	}
 	return SnapshotPayload{
 		Tick: uint64(tick), ServerTimeMs: serverTime, Players: players, Monsters: monsters, Beams: beams, Explosions: explosions, Meteors: meteors, Pickups: pickups,
-		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills)},
+		Team:        SnapshotTeam{Level: int(level), Experience: int(experience), ExperienceRequired: int(required), TotalKills: int(kills), Lives: int(lives)},
 		RemainingMs: int64(remaining),
 	}, nil
 }
@@ -1463,7 +1498,7 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 		}
 	}
 	flags, err := d.u8()
-	if err != nil || flags&^uint8(3) != 0 {
+	if err != nil || flags&^uint8(7) != 0 {
 		return SnapshotPlayer{}, fmt.Errorf("invalid snapshot player flags %d", flags)
 	}
 	hp, err := d.u16()
@@ -1498,6 +1533,26 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	if err != nil {
 		return SnapshotPlayer{}, err
 	}
+	resurrectionDuration, err := d.u32()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
+	resurrectionRadius, err := d.f32()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
+	immunityDuration, err := d.u32()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
+	resurrectionProgress, err := d.f32()
+	if err != nil || resurrectionProgress < 0 || resurrectionProgress > 1 {
+		return SnapshotPlayer{}, fmt.Errorf("invalid resurrection progress %f", resurrectionProgress)
+	}
+	immunityRemaining, err := d.u32()
+	if err != nil {
+		return SnapshotPlayer{}, err
+	}
 	facing := "right"
 	if flags&1 != 0 {
 		facing = "left"
@@ -1507,7 +1562,8 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 		MovementSpeed: values[4], ArmorPercent: values[5], HealthRegeneration: values[6], AttackBuffPercent: values[7], CooldownPercent: values[8],
 		SpellDamage: int(spellDamage), ProjectileSpeed: projectileSpeed, SpellBurst: int(spellBurst), SpellDirections: int(spellDirections),
 		Facing: facing, HP: int(hp), MaxHP: int(maxHP), Alive: flags&2 != 0,
-		LastProcessedInput: uint64(lastInput), Kills: int(kills),
+		LastProcessedInput: uint64(lastInput), Kills: int(kills), ResurrectionDurationMs: int64(resurrectionDuration), ResurrectionRadius: resurrectionRadius,
+		ResurrectionImmunityDurationMs: int64(immunityDuration), ResurrectionProgress: resurrectionProgress, ResurrectionPending: flags&4 != 0, ImmunityRemainingMs: int64(immunityRemaining),
 	}, nil
 }
 

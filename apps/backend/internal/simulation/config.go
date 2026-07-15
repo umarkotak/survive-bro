@@ -38,6 +38,7 @@ const (
 	MonsterSeparationRadiusFactor = 0.72
 	MonsterSeparationStrength     = 0.22
 	MonsterSeparationMaxStep      = 5.0
+	MaximumTeamLives              = 6
 )
 
 type Obstacle struct {

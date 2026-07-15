@@ -74,6 +74,30 @@
           "player"
         ]
       },
+      "resurrection_duration": {
+        "valueType": "number",
+        "unit": "seconds",
+        "appliesTo": [
+          "character",
+          "player"
+        ]
+      },
+      "resurrection_radius": {
+        "valueType": "number",
+        "unit": "world_units",
+        "appliesTo": [
+          "character",
+          "player"
+        ]
+      },
+      "resurrection_immunity_duration": {
+        "valueType": "number",
+        "unit": "seconds",
+        "appliesTo": [
+          "character",
+          "player"
+        ]
+      },
       "damage": {
         "valueType": "number",
         "unit": "hp",
@@ -642,7 +666,10 @@
         "health_regeneration": 0,
         "attack_buff_percent": 0,
         "cooldown_reduction_percent": 0,
-        "pickup_radius": 120
+        "pickup_radius": 120,
+        "resurrection_duration": 10,
+        "resurrection_radius": 120,
+        "resurrection_immunity_duration": 5
       },
       "startingInventory": {
         "spells": [
@@ -666,7 +693,10 @@
         "health_regeneration": 0,
         "attack_buff_percent": 0,
         "cooldown_reduction_percent": 0,
-        "pickup_radius": 125
+        "pickup_radius": 125,
+        "resurrection_duration": 2,
+        "resurrection_radius": 120,
+        "resurrection_immunity_duration": 5
       },
       "startingInventory": {
         "spells": [
@@ -690,7 +720,10 @@
         "health_regeneration": 0,
         "attack_buff_percent": 0,
         "cooldown_reduction_percent": 0,
-        "pickup_radius": 115
+        "pickup_radius": 115,
+        "resurrection_duration": 2,
+        "resurrection_radius": 120,
+        "resurrection_immunity_duration": 5
       },
       "startingInventory": {
         "spells": [
@@ -714,7 +747,10 @@
         "health_regeneration": 10,
         "attack_buff_percent": 0,
         "cooldown_reduction_percent": 0,
-        "pickup_radius": 160
+        "pickup_radius": 160,
+        "resurrection_duration": 2,
+        "resurrection_radius": 120,
+        "resurrection_immunity_duration": 5
       },
       "startingInventory": {
         "spells": [

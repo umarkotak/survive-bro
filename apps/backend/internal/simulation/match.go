@@ -23,56 +23,62 @@ var (
 const UpgradeSelectionTimeout = 50 * time.Second
 
 type Player struct {
-	ID                     string
-	DisplayName            string
-	CharacterID            string
-	SpellIDs               []string
-	SpellID                string
-	X                      float64
-	Y                      float64
-	VelocityX              float64
-	VelocityY              float64
-	MoveX                  float64
-	MoveY                  float64
-	Facing                 string
-	HP                     int
-	Alive                  bool
-	LastInputAt            time.Time
-	LastProcessedInput     uint64
-	LastAttackAt           time.Duration
-	Kills                  int
-	MaxHP                  int
-	ArmorPercent           float64
-	MovementSpeed          float64
-	HealthRegeneration     float64
-	AttackBuffPercent      float64
-	CooldownPercent        float64
-	SpellDamage            int
-	ProjectileSpeed        float64
-	SpellBurst             int
-	SpellDirections        int
-	SpellKind              string
-	BeamLength             float64
-	BeamWidth              float64
-	SpellDuration          time.Duration
-	DamageInterval         time.Duration
-	ExplosionRadius        float64
-	ExplosionDuration      time.Duration
-	ImpactDamage           int
-	SpellCooldown          time.Duration
-	SpellRange             float64
-	ProjectileRadius       float64
-	BaseMaxHP              int
-	BaseArmorPercent       float64
-	BaseMovementSpeed      float64
-	BaseHealthRegeneration float64
-	BaseAttackBuffPercent  float64
-	BaseCooldownPercent    float64
-	BaseSpellDamage        int
-	BaseProjectileSpeed    float64
-	BaseSpellBurst         int
-	BaseSpellDirections    int
-	regenAccumulator       float64
+	ID                           string
+	DisplayName                  string
+	CharacterID                  string
+	SpellIDs                     []string
+	SpellID                      string
+	X                            float64
+	Y                            float64
+	VelocityX                    float64
+	VelocityY                    float64
+	MoveX                        float64
+	MoveY                        float64
+	Facing                       string
+	HP                           int
+	Alive                        bool
+	LastInputAt                  time.Time
+	LastProcessedInput           uint64
+	LastAttackAt                 time.Duration
+	Kills                        int
+	MaxHP                        int
+	ArmorPercent                 float64
+	MovementSpeed                float64
+	HealthRegeneration           float64
+	AttackBuffPercent            float64
+	CooldownPercent              float64
+	SpellDamage                  int
+	ProjectileSpeed              float64
+	SpellBurst                   int
+	SpellDirections              int
+	SpellKind                    string
+	BeamLength                   float64
+	BeamWidth                    float64
+	SpellDuration                time.Duration
+	DamageInterval               time.Duration
+	ExplosionRadius              float64
+	ExplosionDuration            time.Duration
+	ImpactDamage                 int
+	SpellCooldown                time.Duration
+	SpellRange                   float64
+	ProjectileRadius             float64
+	BaseMaxHP                    int
+	BaseArmorPercent             float64
+	BaseMovementSpeed            float64
+	BaseHealthRegeneration       float64
+	BaseAttackBuffPercent        float64
+	BaseCooldownPercent          float64
+	BaseSpellDamage              int
+	BaseProjectileSpeed          float64
+	BaseSpellBurst               int
+	BaseSpellDirections          int
+	ResurrectionDuration         time.Duration
+	ResurrectionRadius           float64
+	ResurrectionImmunityDuration time.Duration
+	ResurrectionProgress         time.Duration
+	ResurrectionPending          bool
+	ImmuneUntil                  time.Duration
+	regenAccumulator             float64
 }
 
 type Monster struct {
@@ -223,6 +229,7 @@ type Match struct {
 	TeamLevel               int
 	TeamExperience          int
 	TotalKills              int
+	TeamLives               int
 	EnemyScore              int
 	Elapsed                 time.Duration
 	Finished                bool
@@ -318,11 +325,14 @@ func (m *Match) AddPlayer(id, displayName string, now time.Time, characterIDs ..
 		BaseMaxHP:          character.MaxHP, BaseArmorPercent: character.ArmorPercent, BaseMovementSpeed: character.MovementSpeed,
 		BaseHealthRegeneration: character.HealthRegeneration, BaseAttackBuffPercent: character.AttackBuffPercent, BaseCooldownPercent: character.CooldownPercent,
 		BaseSpellDamage: spell.Damage, BaseProjectileSpeed: spell.ProjectileSpeed, BaseSpellBurst: spell.Burst, BaseSpellDirections: spell.Directions,
+		ResurrectionDuration: character.ResurrectionDuration, ResurrectionRadius: character.ResurrectionRadius, ResurrectionImmunityDuration: character.ResurrectionImmunityDuration,
 		Alive:        true,
 		LastInputAt:  now,
 		LastAttackAt: -spell.Cooldown,
 	}
 	m.Players[id] = player
+	m.TeamLives = min(MaximumTeamLives, m.TeamLives+1)
+	m.assignAvailableLives()
 	if m.UpgradePhase != nil {
 		m.UpgradePhase.Offers[id] = &PlayerUpgradeOffer{Choices: m.createUpgradeChoices(player, m.UpgradePhase.Source), SelectedIndex: -1}
 	}
@@ -386,6 +396,7 @@ func (m *Match) Step(now time.Time) Events {
 	events := Events{}
 	phaseStarted := time.Now()
 	m.updatePlayers(now)
+	m.updateResurrections()
 	events.Metrics.Movement = time.Since(phaseStarted)
 	phaseStarted = time.Now()
 	m.updateWeapons(&events)
@@ -413,7 +424,7 @@ func (m *Match) Step(now time.Time) Events {
 	events.Metrics.Spawning = time.Since(phaseStarted)
 
 	m.processLevelEvents(&events)
-	if !m.Finished && !m.hasLivingPlayer() {
+	if !m.Finished && !m.hasLivingPlayer() && !m.hasSoloResurrection() {
 		m.finish("lost", &events)
 	}
 	events.Metrics.Total = time.Since(tickStarted)
@@ -430,28 +441,34 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 	for _, id := range playerIDs {
 		player := m.Players[id]
 		players = append(players, protocol.SnapshotPlayer{
-			ID:                 player.ID,
-			DisplayName:        player.DisplayName,
-			CharacterID:        player.CharacterID,
-			X:                  player.X,
-			Y:                  player.Y,
-			VelocityX:          player.VelocityX,
-			VelocityY:          player.VelocityY,
-			MovementSpeed:      player.MovementSpeed,
-			ArmorPercent:       player.ArmorPercent,
-			HealthRegeneration: player.HealthRegeneration,
-			AttackBuffPercent:  player.AttackBuffPercent,
-			CooldownPercent:    player.CooldownPercent,
-			SpellDamage:        player.SpellDamage,
-			ProjectileSpeed:    player.ProjectileSpeed,
-			SpellBurst:         player.SpellBurst,
-			SpellDirections:    player.SpellDirections,
-			Facing:             player.Facing,
-			HP:                 player.HP,
-			MaxHP:              player.MaxHP,
-			Alive:              player.Alive,
-			LastProcessedInput: player.LastProcessedInput,
-			Kills:              player.Kills,
+			ID:                             player.ID,
+			DisplayName:                    player.DisplayName,
+			CharacterID:                    player.CharacterID,
+			X:                              player.X,
+			Y:                              player.Y,
+			VelocityX:                      player.VelocityX,
+			VelocityY:                      player.VelocityY,
+			MovementSpeed:                  player.MovementSpeed,
+			ArmorPercent:                   player.ArmorPercent,
+			HealthRegeneration:             player.HealthRegeneration,
+			AttackBuffPercent:              player.AttackBuffPercent,
+			CooldownPercent:                player.CooldownPercent,
+			SpellDamage:                    player.SpellDamage,
+			ProjectileSpeed:                player.ProjectileSpeed,
+			SpellBurst:                     player.SpellBurst,
+			SpellDirections:                player.SpellDirections,
+			Facing:                         player.Facing,
+			HP:                             player.HP,
+			MaxHP:                          player.MaxHP,
+			Alive:                          player.Alive,
+			LastProcessedInput:             player.LastProcessedInput,
+			Kills:                          player.Kills,
+			ResurrectionDurationMs:         player.ResurrectionDuration.Milliseconds(),
+			ResurrectionRadius:             player.ResurrectionRadius,
+			ResurrectionImmunityDurationMs: player.ResurrectionImmunityDuration.Milliseconds(),
+			ResurrectionProgress:           resurrectionProgress(player),
+			ResurrectionPending:            player.ResurrectionPending,
+			ImmunityRemainingMs:            max(int64(0), (player.ImmuneUntil - m.Elapsed).Milliseconds()),
 		})
 	}
 
@@ -501,6 +518,7 @@ func (m *Match) Snapshot(now time.Time) protocol.SnapshotPayload {
 			Experience:         m.TeamExperience,
 			ExperienceRequired: RequiredExperience(m.TeamLevel),
 			TotalKills:         m.TotalKills,
+			Lives:              m.TeamLives,
 		},
 		RemainingMs: remaining.Milliseconds(),
 	}
@@ -638,11 +656,7 @@ func (m *Match) updateProjectiles(events *Events, metrics *TickMetrics) {
 					continue
 				}
 				damage := max(1, int(math.Round(float64(projectile.Damage)*(1-player.ArmorPercent))))
-				player.HP = max(0, player.HP-damage)
-				if player.HP == 0 {
-					player.Alive = false
-					player.MoveX, player.MoveY = 0, 0
-				}
+				m.applyPlayerDamage(player, damage)
 				metrics.ConfirmedHits++
 				m.removeProjectile(id, "player_hit", events)
 				break
@@ -765,12 +779,7 @@ func (m *Match) updateMonsters(events *Events) {
 			}
 			monster.LastContact[player.ID] = m.Elapsed
 			damage := max(1, int(math.Round(float64(monster.ContactDamage)*(1-player.ArmorPercent))))
-			player.HP = max(0, player.HP-damage)
-			if player.HP == 0 {
-				player.Alive = false
-				player.MoveX = 0
-				player.MoveY = 0
-			}
+			m.applyPlayerDamage(player, damage)
 		}
 	}
 	m.separateMonsters()
@@ -1283,11 +1292,7 @@ func (m *Match) updateMeteors() {
 			}
 			meteor.LastDamage[playerID] = m.Elapsed
 			damage := max(1, int(math.Round(float64(meteor.Damage)*(1-player.ArmorPercent))))
-			player.HP = max(0, player.HP-damage)
-			if player.HP == 0 {
-				player.Alive = false
-				player.VelocityX, player.VelocityY = 0, 0
-			}
+			m.applyPlayerDamage(player, damage)
 		}
 	}
 }
