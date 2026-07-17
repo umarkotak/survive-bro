@@ -27,6 +27,7 @@ const (
 	TypeDamageAppliedBatch MessageType = 74
 	TypeUpgradeOffered     MessageType = 75
 	TypeUpgradeApplied     MessageType = 76
+	TypeMonsterAttacked    MessageType = 77
 	TypeError              MessageType = 126
 	TypeServerClosed       MessageType = 127
 )
@@ -113,34 +114,55 @@ type SystemEvent struct {
 }
 
 type SnapshotPlayer struct {
-	ID                             string  `json:"id"`
-	DisplayName                    string  `json:"displayName"`
-	CharacterID                    string  `json:"characterId"`
-	X                              float64 `json:"x"`
-	Y                              float64 `json:"y"`
-	VelocityX                      float64 `json:"velocityX"`
-	VelocityY                      float64 `json:"velocityY"`
-	MovementSpeed                  float64 `json:"movementSpeed"`
-	ArmorPercent                   float64 `json:"armorPercent"`
-	HealthRegeneration             float64 `json:"healthRegeneration"`
-	AttackBuffPercent              float64 `json:"attackBuffPercent"`
-	CooldownPercent                float64 `json:"cooldownPercent"`
-	SpellDamage                    int     `json:"spellDamage"`
-	ProjectileSpeed                float64 `json:"projectileSpeed"`
-	SpellBurst                     int     `json:"spellBurst"`
-	SpellDirections                int     `json:"spellDirections"`
-	Facing                         string  `json:"facing"`
-	HP                             int     `json:"hp"`
-	MaxHP                          int     `json:"maxHp"`
-	Alive                          bool    `json:"alive"`
-	LastProcessedInput             uint64  `json:"lastProcessedInput"`
-	Kills                          int     `json:"kills"`
-	ResurrectionDurationMs         int64   `json:"resurrectionDurationMs"`
-	ResurrectionRadius             float64 `json:"resurrectionRadius"`
-	ResurrectionImmunityDurationMs int64   `json:"resurrectionImmunityDurationMs"`
-	ResurrectionProgress           float64 `json:"resurrectionProgress"`
-	ResurrectionPending            bool    `json:"resurrectionPending"`
-	ImmunityRemainingMs            int64   `json:"immunityRemainingMs"`
+	ID                             string          `json:"id"`
+	DisplayName                    string          `json:"displayName"`
+	CharacterID                    string          `json:"characterId"`
+	X                              float64         `json:"x"`
+	Y                              float64         `json:"y"`
+	VelocityX                      float64         `json:"velocityX"`
+	VelocityY                      float64         `json:"velocityY"`
+	MovementSpeed                  float64         `json:"movementSpeed"`
+	ArmorPercent                   float64         `json:"armorPercent"`
+	HealthRegeneration             float64         `json:"healthRegeneration"`
+	AttackBuffPercent              float64         `json:"attackBuffPercent"`
+	CooldownPercent                float64         `json:"cooldownPercent"`
+	SpellDamage                    int             `json:"spellDamage"`
+	ProjectileSpeed                float64         `json:"projectileSpeed"`
+	SpellBurst                     int             `json:"spellBurst"`
+	SpellDirections                int             `json:"spellDirections"`
+	Facing                         string          `json:"facing"`
+	HP                             int             `json:"hp"`
+	MaxHP                          int             `json:"maxHp"`
+	Alive                          bool            `json:"alive"`
+	LastProcessedInput             uint64          `json:"lastProcessedInput"`
+	Kills                          int             `json:"kills"`
+	ResurrectionDurationMs         int64           `json:"resurrectionDurationMs"`
+	ResurrectionRadius             float64         `json:"resurrectionRadius"`
+	ResurrectionImmunityDurationMs int64           `json:"resurrectionImmunityDurationMs"`
+	ResurrectionProgress           float64         `json:"resurrectionProgress"`
+	ResurrectionPending            bool            `json:"resurrectionPending"`
+	ImmunityRemainingMs            int64           `json:"immunityRemainingMs"`
+	Spells                         []SnapshotSpell `json:"spells"`
+}
+
+type SnapshotSpell struct {
+	ID               string  `json:"id"`
+	Kind             string  `json:"kind"`
+	Level            int     `json:"level"`
+	MaxLevel         int     `json:"maxLevel"`
+	Damage           int     `json:"damage"`
+	CooldownMs       int64   `json:"cooldownMs"`
+	Range            float64 `json:"range"`
+	ProjectileSpeed  float64 `json:"projectileSpeed"`
+	ProjectileRadius float64 `json:"projectileRadius"`
+	Burst            int     `json:"burst"`
+	Directions       int     `json:"directions"`
+	BeamLength       float64 `json:"beamLength"`
+	BeamWidth        float64 `json:"beamWidth"`
+	DurationMs       int64   `json:"durationMs"`
+	DamageIntervalMs int64   `json:"damageIntervalMs"`
+	ExplosionRadius  float64 `json:"explosionRadius"`
+	ImpactDamage     int     `json:"impactDamage"`
 }
 
 type SnapshotMonster struct {
@@ -182,6 +204,7 @@ type SnapshotMeteor struct {
 	Radius      float64 `json:"radius"`
 	ImpactInMs  int64   `json:"impactInMs"`
 	RemainingMs int64   `json:"remainingMs"`
+	Friendly    bool    `json:"friendly"`
 }
 
 type SnapshotPickup struct {
@@ -279,6 +302,12 @@ type UpgradeAppliedPayload struct {
 	FinalValue float64 `json:"finalValue"`
 }
 
+type MonsterAttackedPayload struct {
+	MonsterID      uint64 `json:"monsterId"`
+	SpellID        string `json:"spellId"`
+	TargetPlayerID string `json:"targetPlayerId"`
+}
+
 func NewEnvelope(messageType MessageType, requestID string, payload any) (Envelope, error) {
 	if !messageType.valid() {
 		return Envelope{}, fmt.Errorf("unknown message type %d", messageType)
@@ -314,7 +343,7 @@ func (t MessageType) valid() bool {
 	switch t {
 	case TypeJoinRoom, TypeLeaveRoom, TypePing, TypeInput, TypeSelectUpgrade, TypeDebugLevelUp, TypeJoined, TypeRoomState,
 		TypeMatchStarted, TypeSnapshot, TypeProjectileSpawned, TypeProjectileRemoved,
-		TypeMatchEnded, TypePong, TypeDamageAppliedBatch, TypeUpgradeOffered, TypeUpgradeApplied, TypeError, TypeServerClosed:
+		TypeMatchEnded, TypePong, TypeDamageAppliedBatch, TypeUpgradeOffered, TypeUpgradeApplied, TypeMonsterAttacked, TypeError, TypeServerClosed:
 		return true
 	default:
 		return false

@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "status": "design-contract",
   "runtimeSections": [
+    "inventory",
+    "modifiers",
     "characters",
     "spells",
     "enemies",
@@ -152,6 +154,13 @@
           "projectile"
         ]
       },
+      "melee_range": {
+        "valueType": "number",
+        "unit": "world_units",
+        "appliesTo": [
+          "spell"
+        ]
+      },
       "collision_radius": {
         "valueType": "number",
         "unit": "world_units",
@@ -252,6 +261,14 @@
         "appliesTo": [
           "system_event"
         ]
+      },
+      "kills_per_chest": {
+        "valueType": "integer",
+        "unit": "kills",
+        "range": [1, 1000],
+        "appliesTo": [
+          "system_event"
+        ]
       }
     },
     "modifierOperations": [
@@ -270,7 +287,7 @@
     ]
   },
   "inventory": {
-    "spellSlots": 5,
+    "spellSlots": 4,
     "buffSlots": 5,
     "itemKinds": [
       "spell",
@@ -461,11 +478,69 @@
       "attribute": "directions",
       "operation": "add_flat",
       "value": 1
+    },
+    "heavy_aura_radius_1": {
+      "target": "spell", "selector": { "spellId": "heavy-aura" }, "attribute": "explosion_radius", "operation": "add_flat", "value": 30
+    },
+    "heavy_aura_damage_1": {
+      "target": "spell", "selector": { "spellId": "heavy-aura" }, "attribute": "damage", "operation": "add_flat", "value": 2
+    },
+    "heavy_aura_interval_1": {
+      "target": "spell", "selector": { "spellId": "heavy-aura" }, "attribute": "damage_interval_ms", "operation": "add_flat", "value": -75
+    },
+    "heavy_aura_radius_2": {
+      "target": "spell", "selector": { "spellId": "heavy-aura" }, "attribute": "explosion_radius", "operation": "add_flat", "value": 40
+    },
+    "heavy_aura_damage_2": {
+      "target": "spell", "selector": { "spellId": "heavy-aura" }, "attribute": "damage", "operation": "add_flat", "value": 4
+    },
+    "meteorite_radius_1": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "explosion_radius", "operation": "add_flat", "value": 20
+    },
+    "meteorite_damage_1": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "damage", "operation": "add_flat", "value": 16
+    },
+    "meteorite_warning_1": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "linger_duration_ms", "operation": "add_flat", "value": -200
+    },
+    "meteorite_cooldown_1": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "cooldown_ms", "operation": "add_flat", "value": -400
+    },
+    "meteorite_radius_2": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "explosion_radius", "operation": "add_flat", "value": 25
+    },
+    "meteorite_damage_2": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "damage", "operation": "add_flat", "value": 24
+    },
+    "meteorite_directions_1": {
+      "target": "spell", "selector": { "spellId": "meteorite" }, "attribute": "directions", "operation": "add_flat", "value": 1
+    },
+    "tracking_beam_length_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "beam_length", "operation": "add_flat", "value": 100
+    },
+    "tracking_beam_damage_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "damage", "operation": "add_flat", "value": 3
+    },
+    "tracking_beam_duration_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "linger_duration_ms", "operation": "add_flat", "value": 400
+    },
+    "tracking_beam_width_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "beam_width", "operation": "add_flat", "value": 8
+    },
+    "tracking_beam_interval_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "damage_interval_ms", "operation": "add_flat", "value": -50
+    },
+    "tracking_beam_cooldown_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "cooldown_ms", "operation": "add_flat", "value": -300
+    },
+    "tracking_beam_directions_1": {
+      "target": "spell", "selector": { "spellId": "tracking-beam" }, "attribute": "directions", "operation": "add_flat", "value": 1
     }
   },
   "spells": {
     "fireball": {
       "kind": "spell",
+      "playerAvailable": true,
       "name": "Fireball",
       "description": "A straight projectile that targets the nearest enemy.",
       "tags": [
@@ -502,6 +577,7 @@
     },
     "enemy-slime-ball": {
       "kind": "spell",
+      "playerAvailable": false,
       "attackType": "projectile",
       "name": "Slime Ball",
       "description": "A short-range hostile glob used by Slime enemies.",
@@ -525,8 +601,90 @@
       "maxLevel": 1,
       "levels": {}
     },
+    "slime-punch": {
+      "kind": "spell",
+      "playerAvailable": false,
+      "attackType": "melee",
+      "name": "Slime Punch",
+      "description": "A very short-range punch used by small Slimes and Slime Kings.",
+      "tags": [
+        "melee",
+        "enemy",
+        "slime"
+      ],
+      "assets": {},
+      "baseAttributes": {
+        "damage": 14,
+        "cooldown_ms": 1200,
+        "melee_range": 90,
+        "burst": 1,
+        "directions": 1
+      },
+      "maxLevel": 1,
+      "levels": {}
+    },
+    "heavy-aura": {
+      "kind": "spell",
+      "playerAvailable": true,
+      "attackType": "aura",
+      "name": "Heavy Aura",
+      "description": "A crushing field that continuously damages nearby enemies.",
+      "tags": ["aura", "area"],
+      "assets": {},
+      "baseAttributes": {
+        "damage": 4, "cooldown_ms": 500, "explosion_radius": 110,
+        "linger_duration_ms": 550, "damage_interval_ms": 500, "burst": 1, "directions": 1
+      },
+      "maxLevel": 7,
+      "levels": {
+        "2": ["heavy_aura_radius_1"], "3": ["heavy_aura_damage_1"],
+        "4": ["heavy_aura_interval_1"], "5": ["heavy_aura_radius_2"],
+        "6": ["heavy_aura_damage_2"], "7": ["heavy_aura_interval_1"]
+      }
+    },
+    "meteorite": {
+      "kind": "spell",
+      "playerAvailable": true,
+      "attackType": "player_meteor",
+      "name": "Meteorite",
+      "description": "Marks the nearest enemy, then crashes a meteor into the area.",
+      "tags": ["meteor", "area"],
+      "assets": {},
+      "baseAttributes": {
+        "damage": 42, "cooldown_ms": 3000, "projectile_range": 700,
+        "explosion_radius": 85, "linger_duration_ms": 900, "burst": 1, "directions": 1
+      },
+      "maxLevel": 8,
+      "levels": {
+        "2": ["meteorite_radius_1"], "3": ["meteorite_damage_1"],
+        "4": ["meteorite_warning_1"], "5": ["meteorite_cooldown_1"],
+        "6": ["meteorite_radius_2"], "7": ["meteorite_damage_2"],
+        "8": ["meteorite_directions_1"]
+      }
+    },
+    "tracking-beam": {
+      "kind": "spell",
+      "playerAvailable": true,
+      "attackType": "tracking_beam",
+      "name": "Tracking Beam",
+      "description": "Channels a laser that follows the nearest enemy and pierces its line.",
+      "tags": ["beam", "tracking", "piercing"],
+      "assets": {},
+      "baseAttributes": {
+        "damage": 6, "cooldown_ms": 2400, "beam_length": 600, "beam_width": 18,
+        "linger_duration_ms": 1200, "damage_interval_ms": 250, "burst": 1, "directions": 1
+      },
+      "maxLevel": 8,
+      "levels": {
+        "2": ["tracking_beam_length_1"], "3": ["tracking_beam_damage_1"],
+        "4": ["tracking_beam_duration_1"], "5": ["tracking_beam_width_1"],
+        "6": ["tracking_beam_interval_1"], "7": ["tracking_beam_cooldown_1"],
+        "8": ["tracking_beam_directions_1"]
+      }
+    },
     "soul-track": {
       "kind": "spell",
+      "playerAvailable": true,
       "attackType": "beam",
       "name": "Soul Track",
       "description": "A lingering laser that damages touching enemies every 500 ms.",
@@ -569,6 +727,7 @@
     },
     "rocket": {
       "kind": "spell",
+      "playerAvailable": true,
       "attackType": "explosive_projectile",
       "name": "Rocket",
       "description": "A compact rocket that creates a lingering damaging blast on impact.",
@@ -768,7 +927,7 @@
       "name": "Slime",
       "sprite": "enemy-slime-stage-1",
       "spellIds": [
-        "enemy-slime-ball"
+        "slime-punch"
       ],
       "attributes": {
         "score": 100,
@@ -802,7 +961,7 @@
       "name": "Slime King",
       "sprite": "enemy-slime-stage-3",
       "spellIds": [
-        "enemy-slime-ball"
+        "slime-punch"
       ],
       "attributes": {
         "score": 5000,
@@ -819,7 +978,7 @@
   "levels": {
     "level-1": {
       "name": "Slime Meadow",
-      "duration_ms": 1200000,
+      "duration_ms": 900000,
       "terrainAssets": [
         "terrain-variant-1"
       ],
@@ -830,276 +989,226 @@
       ],
       "events": [
         {
-          "id": "opening-slimes",
-          "type": "spawn_rate",
-          "at_ms": 0,
-          "title": "The Meadow Stirs",
-          "description": "A gentle wave of small Slimes gives the squad time to gain its first upgrades.",
+          "id": "opening-treasure-cadence", "type": "treasure_rate", "at_ms": 0, "show": false,
+          "title": "Opening treasure cadence", "description": "Power crates drop every 24 kills.",
+          "config": { "kills_per_chest": 24 }
+        },
+        {
+          "id": "opening-surge", "type": "spawn_rate", "at_ms": 0, "show": true,
+          "title": "The Meadow Erupts", "description": "The first Slime surge is already closing in.",
+          "config": { "spawn_rate": 1.2, "max_living": 55, "composition": [{ "enemyId": "slime-stage-1", "weight": 100 }] }
+        },
+        {
+          "id": "first-ripples", "type": "spawn_rate", "at_ms": 60000, "show": false,
+          "title": "First Ripples", "description": "Greater Slimes enter the opening swarm.",
+          "config": { "spawn_rate": 1.8, "max_living": 85, "composition": [{ "enemyId": "slime-stage-1", "weight": 85 }, { "enemyId": "slime-stage-2", "weight": 15 }] }
+        },
+        {
+          "id": "first-hardening", "type": "monster_buff", "at_ms": 120000, "show": false,
+          "title": "First Hardening", "description": "The swarm gains 50% health and 5% speed.",
+          "config": { "health_multiplier": 1.5, "speed_multiplier": 1.05 }
+        },
+        {
+          "id": "pressure-rising", "type": "spawn_rate", "at_ms": 120000, "show": true,
+          "title": "Pressure Rising", "description": "The swarm thickens and tougher Slimes take the field.",
+          "config": { "spawn_rate": 2.6, "max_living": 120, "composition": [{ "enemyId": "slime-stage-1", "weight": 65 }, { "enemyId": "slime-stage-2", "weight": 35 }] }
+        },
+        {
+          "id": "spell-chest-alpha", "type": "spell_chest", "at_ms": 150000, "show": true,
+          "title": "Arcane Supply", "description": "A spell chest has landed near the centre.",
+          "config": { "x": 1600, "y": 900, "spellPool": "all" }
+        },
+        {
+          "id": "slime-king-vanguard", "type": "boss", "at_ms": 180000, "show": true,
+          "title": "Vanguard Slime King", "description": "The first king tests whether the squad has enough damage.",
+          "config": { "enemyId": "slime-stage-3", "count": 1, "endMatchOnDeath": false, "statMultipliers": { "health": 5, "movement_speed": 1.05, "damage": 1.25 } }
+        },
+        {
+          "id": "treasure-cadence-two", "type": "treasure_rate", "at_ms": 210000, "show": false,
+          "title": "Treasure cadence two", "description": "Power crates now drop every 22 kills.",
+          "config": { "kills_per_chest": 22 }
+        },
+        {
+          "id": "royal-retinue", "type": "spawn_rate", "at_ms": 210000, "show": false,
+          "title": "Royal Retinue", "description": "Greater Slimes become the majority.",
+          "config": { "spawn_rate": 3.3, "max_living": 155, "composition": [{ "enemyId": "slime-stage-1", "weight": 45 }, { "enemyId": "slime-stage-2", "weight": 55 }] }
+        },
+        {
+          "id": "second-hardening", "type": "monster_buff", "at_ms": 240000, "show": false,
+          "title": "Dense Gel", "description": "The swarm gains another 45% health and 6% speed.",
+          "config": { "health_multiplier": 1.45, "speed_multiplier": 1.06 }
+        },
+        {
+          "id": "ember-rain", "type": "meteor_shower", "at_ms": 300000, "show": true,
+          "title": "Ember Rain", "description": "A one-minute meteor front cuts through the growing horde.",
+          "config": { "duration_ms": 60000, "rate_per_second": 0.28, "warning_ms": 1600, "linger_min_ms": 3000, "linger_max_ms": 4000, "radius": 78, "damage": 20, "damage_interval_ms": 900 }
+        },
+        {
+          "id": "burning-horde", "type": "spawn_rate", "at_ms": 300000, "show": true,
+          "title": "Burning Horde", "description": "A dense Greater Slime wave arrives under meteor fire.",
+          "config": { "spawn_rate": 4.1, "max_living": 190, "composition": [{ "enemyId": "slime-stage-1", "weight": 25 }, { "enemyId": "slime-stage-2", "weight": 75 }] }
+        },
+        {
+          "id": "spell-chest-beta", "type": "spell_chest", "at_ms": 390000, "show": true,
+          "title": "Arcane Reinforcement", "description": "A second spell chest arrives before the next king.",
+          "config": { "x": 1500, "y": 900, "spellPool": "all" }
+        },
+        {
+          "id": "slime-king-warlord", "type": "boss", "at_ms": 420000, "show": true,
+          "title": "Warlord Slime King", "description": "A hardened king charges through the active swarm.",
+          "config": { "enemyId": "slime-stage-3", "count": 1, "endMatchOnDeath": false, "statMultipliers": { "health": 7, "movement_speed": 1.12, "damage": 1.55 } }
+        },
+        {
+          "id": "third-hardening", "type": "monster_buff", "at_ms": 450000, "show": false,
+          "title": "Royal Carapace", "description": "The swarm gains another 40% health and 7% speed.",
+          "config": { "health_multiplier": 1.4, "speed_multiplier": 1.07 }
+        },
+        {
+          "id": "treasure-cadence-three", "type": "treasure_rate", "at_ms": 450000, "show": false,
+          "title": "Treasure cadence three", "description": "Power crates now drop every 20 kills.",
+          "config": { "kills_per_chest": 20 }
+        },
+        {
+          "id": "relentless-tide", "type": "spawn_rate", "at_ms": 450000, "show": false,
+          "title": "Relentless Tide", "description": "Greater Slimes nearly replace the opening swarm.",
+          "config": { "spawn_rate": 4.8, "max_living": 220, "composition": [{ "enemyId": "slime-stage-1", "weight": 10 }, { "enemyId": "slime-stage-2", "weight": 90 }] }
+        },
+        {
+          "id": "meteor-crossfire", "type": "meteor_shower", "at_ms": 540000, "show": true,
+          "title": "Meteor Crossfire", "description": "A faster storm overlaps the heaviest swarm yet.",
+          "config": { "duration_ms": 75000, "rate_per_second": 0.42, "warning_ms": 1450, "linger_min_ms": 3000, "linger_max_ms": 4000, "radius": 84, "damage": 25, "damage_interval_ms": 850 }
+        },
+        {
+          "id": "overrun", "type": "spawn_rate", "at_ms": 540000, "show": true,
+          "title": "Overrun", "description": "Greater Slimes flood every approach to the squad.",
+          "config": { "spawn_rate": 5.6, "max_living": 240, "composition": [{ "enemyId": "slime-stage-2", "weight": 100 }] }
+        },
+        {
+          "id": "fourth-hardening", "type": "monster_buff", "at_ms": 600000, "show": false,
+          "title": "Ancient Gel", "description": "The swarm gains another 40% health and 7% speed.",
+          "config": { "health_multiplier": 1.4, "speed_multiplier": 1.07 }
+        },
+        {
+          "id": "spell-chest-gamma", "type": "spell_chest", "at_ms": 630000, "show": true,
+          "title": "Final Arcane Supply", "description": "The final spell chest lands before the royal twins.",
+          "config": { "x": 1700, "y": 900, "spellPool": "all" }
+        },
+        {
+          "id": "slime-king-twins", "type": "boss", "at_ms": 660000, "show": true,
+          "title": "The Royal Twins", "description": "Two Slime Kings enter together and each guards a treasure chest.",
+          "config": { "enemyId": "slime-stage-3", "count": 2, "endMatchOnDeath": false, "statMultipliers": { "health": 6, "movement_speed": 1.18, "damage": 1.8 } }
+        },
+        {
+          "id": "royal-deluge", "type": "spawn_rate", "at_ms": 690000, "show": false,
+          "title": "Royal Deluge", "description": "The post-boss swarm accelerates again.",
+          "config": { "spawn_rate": 6.4, "max_living": 250, "composition": [{ "enemyId": "slime-stage-1", "weight": 5 }, { "enemyId": "slime-stage-2", "weight": 95 }] }
+        },
+        {
+          "id": "fifth-hardening", "type": "monster_buff", "at_ms": 720000, "show": false,
+          "title": "Sovereign Blood", "description": "The swarm gains another 35% health and 6% speed.",
+          "config": { "health_multiplier": 1.35, "speed_multiplier": 1.06 }
+        },
+        {
+          "id": "treasure-cadence-four", "type": "treasure_rate", "at_ms": 720000, "show": false,
+          "title": "Treasure cadence four", "description": "Power crates now drop every 18 kills.",
+          "config": { "kills_per_chest": 18 }
+        },
+        {
+          "id": "meteor-cataclysm", "type": "meteor_shower", "at_ms": 750000, "show": true,
+          "title": "Meteor Cataclysm", "description": "The final storm leaves almost no safe ground.",
+          "config": { "duration_ms": 90000, "rate_per_second": 0.6, "warning_ms": 1300, "linger_min_ms": 3000, "linger_max_ms": 4000, "radius": 90, "damage": 30, "damage_interval_ms": 750 }
+        },
+        {
+          "id": "final-flood", "type": "spawn_rate", "at_ms": 780000, "show": true,
+          "title": "Final Flood", "description": "The meadow disappears beneath the last Greater Slime wave.",
+          "config": { "spawn_rate": 7.2, "max_living": 260, "composition": [{ "enemyId": "slime-stage-2", "weight": 100 }] }
+        },
+        {
+          "id": "last-frenzy", "type": "monster_buff", "at_ms": 810000, "show": false,
+          "title": "Last Frenzy", "description": "The swarm gains another 30% health and 5% speed.",
+          "config": { "health_multiplier": 1.3, "speed_multiplier": 1.05 }
+        },
+        {
+          "id": "treasure-cadence-final", "type": "treasure_rate", "at_ms": 810000, "show": false,
+          "title": "Final treasure cadence", "description": "Power crates now drop every 16 kills.",
+          "config": { "kills_per_chest": 16 }
+        },
+        {
+          "id": "slime-king-final", "type": "boss", "at_ms": 840000, "show": true,
+          "title": "Sovereign Slime King", "description": "The colossal sovereign arrives. Defeat it before dawn.",
+          "config": { "enemyId": "slime-stage-3", "count": 1, "endMatchOnDeath": true, "statMultipliers": { "health": 15, "movement_speed": 1.25, "damage": 2.4, "collision_radius": 1.2 } }
+        },
+        {
+          "id": "level-complete", "type": "end", "at_ms": 900000, "show": true,
+          "title": "Dawn", "description": "The 15-minute survival limit is reached.", "config": {}
+        }
+      ]
+    },
+    "spell-lab": {
+      "name": "Spell Laboratory",
+      "duration_ms": 600000,
+      "terrainAssets": ["terrain-variant-1"],
+      "obstacleAssets": ["obstacle-large-rock-1", "obstacle-large-rock-2", "obstacle-large-rock-3"],
+      "events": [
+        {
+          "id": "spell-lab-swarm", "type": "spawn_rate", "at_ms": 0,
+          "title": "Target Swarm", "description": "A mixed slime swarm enters the spell laboratory.",
           "config": {
-            "spawn_rate": 0.8,
-            "max_living": 40,
+            "spawn_rate": 1.8, "max_living": 80,
             "composition": [
-              {
-                "enemyId": "slime-stage-1",
-                "weight": 100
-              }
+              { "enemyId": "slime-stage-1", "weight": 65 },
+              { "enemyId": "slime-stage-2", "weight": 35 }
             ]
           }
         },
         {
-          "id": "first-ripples",
-          "type": "spawn_rate",
-          "at_ms": 90000,
-          "title": "First Ripples",
-          "description": "Greater Slimes begin appearing among the smaller swarm.",
-          "config": {
-            "spawn_rate": 1.2,
-            "max_living": 70,
-            "composition": [
-              {
-                "enemyId": "slime-stage-1",
-                "weight": 80
-              },
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 20
-              }
-            ]
-          }
+          "id": "spell-chest-1", "type": "spell_chest", "at_ms": 0,
+          "title": "Spell Chest", "description": "Collect the chest near the centre to learn or level a laboratory spell.",
+          "config": { "x": 1600, "y": 900, "spellPool": "all" }
         },
         {
-          "id": "greater-tide",
-          "type": "spawn_rate",
-          "at_ms": 180000,
-          "title": "Greater Tide",
-          "description": "The two Slime stages now attack in equal numbers.",
-          "config": {
-            "spawn_rate": 1.8,
-            "max_living": 100,
-            "composition": [
-              {
-                "enemyId": "slime-stage-1",
-                "weight": 50
-              },
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 50
-              }
-            ]
-          }
+          "id": "spell-chest-2", "type": "spell_chest", "at_ms": 60000,
+          "title": "Spell Chest", "description": "A second spell chest has appeared.",
+          "config": { "x": 1500, "y": 900, "spellPool": "all" }
         },
         {
-          "id": "hardened-gel",
-          "type": "monster_buff",
-          "at_ms": 270000,
-          "title": "Hardened Gel",
-          "description": "All Slimes gain 20% health and 8% movement speed.",
-          "config": {
-            "health_multiplier": 1.2,
-            "speed_multiplier": 1.08
-          }
+          "id": "spell-chest-3", "type": "spell_chest", "at_ms": 120000,
+          "title": "Spell Chest", "description": "Another spell level is available.",
+          "config": { "x": 1700, "y": 900, "spellPool": "all" }
         },
         {
-          "id": "slime-king-vanguard",
-          "type": "boss",
-          "at_ms": 300000,
-          "title": "Vanguard Slime King",
-          "description": "The first real boss enters. Defeat it to earn a guaranteed treasure chest.",
-          "config": {
-            "enemyId": "slime-stage-3",
-            "count": 1,
-            "endMatchOnDeath": false,
-            "statMultipliers": {
-              "health": 1.5,
-              "movement_speed": 1,
-              "damage": 1.15
-            }
-          }
+          "id": "spell-chest-4", "type": "spell_chest", "at_ms": 180000,
+          "title": "Spell Chest", "description": "The laboratory releases another spell chest.",
+          "config": { "x": 1600, "y": 800, "spellPool": "all" }
         },
         {
-          "id": "royal-retinue",
-          "type": "spawn_rate",
-          "at_ms": 360000,
-          "title": "Royal Retinue",
-          "description": "Greater Slimes take over most of the wave.",
-          "config": {
-            "spawn_rate": 2.6,
-            "max_living": 140,
-            "composition": [
-              {
-                "enemyId": "slime-stage-1",
-                "weight": 20
-              },
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 80
-              }
-            ]
-          }
+          "id": "spell-chest-5", "type": "spell_chest", "at_ms": 240000,
+          "title": "Spell Chest", "description": "A fifth spell chest is ready.",
+          "config": { "x": 1600, "y": 1000, "spellPool": "all" }
         },
         {
-          "id": "meteor-warning",
-          "type": "meteor_shower",
-          "at_ms": 480000,
-          "title": "Meteor Warning",
-          "description": "A focused 90-second meteor shower forces the squad to keep moving.",
-          "config": {
-            "duration_ms": 90000,
-            "rate_per_second": 0.35,
-            "warning_ms": 1600,
-            "linger_min_ms": 3000,
-            "linger_max_ms": 4000,
-            "radius": 80,
-            "damage": 22,
-            "damage_interval_ms": 900
-          }
+          "id": "spell-chest-6", "type": "spell_chest", "at_ms": 300000,
+          "title": "Spell Chest", "description": "Another randomized spell chest is ready.",
+          "config": { "x": 1450, "y": 820, "spellPool": "all" }
         },
         {
-          "id": "burning-horde",
-          "type": "spawn_rate",
-          "at_ms": 480000,
-          "title": "Burning Horde",
-          "description": "The late-game swarm begins with heavier Greater Slime pressure.",
-          "config": {
-            "spawn_rate": 3.4,
-            "max_living": 180,
-            "composition": [
-              {
-                "enemyId": "slime-stage-1",
-                "weight": 10
-              },
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 90
-              }
-            ]
-          }
+          "id": "spell-chest-7", "type": "spell_chest", "at_ms": 360000,
+          "title": "Spell Chest", "description": "The laboratory releases another randomized spell chest.",
+          "config": { "x": 1750, "y": 980, "spellPool": "all" }
         },
         {
-          "id": "slime-king-warlord",
-          "type": "boss",
-          "at_ms": 600000,
-          "title": "Warlord Slime King",
-          "description": "A stronger king attacks and rewards another guaranteed treasure chest.",
-          "config": {
-            "enemyId": "slime-stage-3",
-            "count": 1,
-            "endMatchOnDeath": false,
-            "statMultipliers": {
-              "health": 10000,
-              "movement_speed": 1.3,
-              "damage": 2
-            }
-          }
+          "id": "spell-chest-8", "type": "spell_chest", "at_ms": 420000,
+          "title": "Spell Chest", "description": "Another spell test chest has appeared.",
+          "config": { "x": 1600, "y": 750, "spellPool": "all" }
         },
         {
-          "id": "royal-fury",
-          "type": "monster_buff",
-          "at_ms": 600000,
-          "title": "Royal Fury",
-          "description": "All Slimes gain another 25% health and 10% movement speed.",
-          "config": {
-            "health_multiplier": 1.25,
-            "speed_multiplier": 1.1
-          }
+          "id": "spell-chest-9", "type": "spell_chest", "at_ms": 480000,
+          "title": "Spell Chest", "description": "A final randomized spell chest is available.",
+          "config": { "x": 1600, "y": 1050, "spellPool": "all" }
         },
         {
-          "id": "relentless-tide",
-          "type": "spawn_rate",
-          "at_ms": 600000,
-          "title": "Relentless Tide",
-          "description": "Four Greater Slimes emerge each second.",
-          "config": {
-            "spawn_rate": 50,
-            "max_living": 500,
-            "composition": [
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 100
-              }
-            ]
-          }
-        },
-        {
-          "id": "royal-fury-part-2",
-          "type": "monster_buff",
-          "at_ms": 600000,
-          "title": "Royal Fury",
-          "description": "All Slimes gain another 25% health and 10% movement speed.",
-          "config": {
-            "health_multiplier": 1000,
-            "speed_multiplier": 2
-          }
-        },
-        {
-          "id": "meteor-cataclysm",
-          "type": "meteor_shower",
-          "at_ms": 720000,
-          "title": "Meteor Cataclysm",
-          "description": "A denser two-minute storm marks the beginning of the final act.",
-          "config": {
-            "duration_ms": 120000,
-            "rate_per_second": 0.55,
-            "warning_ms": 1400,
-            "linger_min_ms": 3000,
-            "linger_max_ms": 4000,
-            "radius": 85,
-            "damage": 28,
-            "damage_interval_ms": 800
-          }
-        },
-        {
-          "id": "chaos-tide",
-          "type": "spawn_rate",
-          "at_ms": 720000,
-          "title": "Chaos Tide",
-          "description": "The swarm accelerates toward the final confrontation.",
-          "config": {
-            "spawn_rate": 5.2,
-            "max_living": 280,
-            "composition": [
-              {
-                "enemyId": "slime-stage-2",
-                "weight": 100
-              }
-            ]
-          }
-        },
-        {
-          "id": "last-frenzy",
-          "type": "monster_buff",
-          "at_ms": 780000,
-          "title": "Last Frenzy",
-          "description": "All Slimes gain another 20% health and 8% movement speed.",
-          "config": {
-            "health_multiplier": 1.2,
-            "speed_multiplier": 1.08
-          }
-        },
-        {
-          "id": "slime-king-final",
-          "type": "boss",
-          "at_ms": 840000,
-          "title": "Sovereign Slime King",
-          "description": "Defeat the final king to end the level before dawn.",
-          "config": {
-            "enemyId": "slime-stage-3",
-            "count": 1,
-            "endMatchOnDeath": true,
-            "statMultipliers": {
-              "health": 100000,
-              "movement_speed": 1.4,
-              "damage": 3
-            }
-          }
-        },
-        {
-          "id": "level-complete",
-          "type": "end",
-          "at_ms": 1200000,
-          "title": "Dawn",
-          "description": "The 15-minute run ends and score is calculated.",
-          "config": {}
+          "id": "spell-lab-complete", "type": "end", "at_ms": 600000,
+          "title": "Lab Complete", "description": "The ten-minute spell test ends.", "config": {}
         }
       ]
     },

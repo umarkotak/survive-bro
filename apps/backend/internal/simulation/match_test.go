@@ -160,3 +160,205 @@ func TestMultiplayerMatchEndsWhenNoLivingReviverRemains(t *testing.T) {
 		t.Fatalf("match did not end after squad wipe: finished=%v event=%#v", match.Finished, events.MatchEnded)
 	}
 }
+
+func TestMonsterMeleeSpellDamagesOnlyWithinRangeAndRespectsCooldown(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	player.ArmorPercent = 0.5
+	monster := &Monster{ID: 1, X: player.X + 90, Y: player.Y, SpellIDs: []string{"slime-punch"}, LastSpellAt: make(map[string]time.Duration), AttackDamageMultiplier: 1}
+	match.Elapsed = 1200 * time.Millisecond
+
+	events := Events{}
+	match.castMonsterSpell(monster, player, &events)
+	if player.HP != player.MaxHP-7 {
+		t.Fatalf("melee hp = %d, want %d", player.HP, player.MaxHP-7)
+	}
+	if len(match.Projectiles) != 0 {
+		t.Fatalf("melee created %d projectiles", len(match.Projectiles))
+	}
+	if len(events.MonsterAttacks) != 1 || events.MonsterAttacks[0].SpellID != "slime-punch" || events.MonsterAttacks[0].TargetPlayerID != player.ID {
+		t.Fatalf("melee attack events = %#v", events.MonsterAttacks)
+	}
+
+	match.castMonsterSpell(monster, player, &Events{})
+	if player.HP != player.MaxHP-7 {
+		t.Fatalf("melee ignored cooldown: hp = %d", player.HP)
+	}
+
+	match.Elapsed += 1200 * time.Millisecond
+	monster.X = player.X + 91
+	match.castMonsterSpell(monster, player, &Events{})
+	if player.HP != player.MaxHP-7 {
+		t.Fatalf("out-of-range melee changed hp to %d", player.HP)
+	}
+}
+
+func TestSpellChestChoiceLearnsUniqueSpellAndRejectsDuplicate(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	_, ok := SpellByID("heavy-aura")
+	if !ok {
+		t.Skip("runtime spell data is not loaded")
+	}
+
+	first := match.applySpellChoice(player, "heavy-aura")
+	if first.FinalValue != 1 || player.SpellID != "fireball" || player.SpellLevels["heavy-aura"] != 1 {
+		t.Fatalf("unexpected learned spell: event=%#v player=%#v", first, player)
+	}
+	second := match.applySpellChoice(player, "heavy-aura")
+	if second.AddedValue != 0 || player.SpellLevels["heavy-aura"] != 1 || len(player.SpellIDs) != 2 {
+		t.Fatalf("duplicate spell was added: event=%#v spells=%#v", second, player.SpellIDs)
+	}
+}
+
+func TestSpellChestExcludesOwnedSpellsAndFallsBackToTreasure(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	match.applySpellChoice(player, "heavy-aura")
+	pool := []string{"fireball", "heavy-aura", "meteorite", "tracking-beam"}
+	offer := match.createPlayerOffer(player, "spell_chest", pool)
+	for _, choice := range offer.Choices {
+		if choice.Attribute == "spell:heavy-aura" {
+			t.Fatalf("owned spell appeared in offer: %#v", offer)
+		}
+	}
+	match.applySpellChoice(player, "meteorite")
+	match.applySpellChoice(player, "tracking-beam")
+	offer = match.createPlayerOffer(player, "spell_chest", pool)
+	if offer.Source != "treasure_chest" || len(offer.Choices) != 3 {
+		t.Fatalf("full spell inventory did not fall back: %#v", offer)
+	}
+}
+
+func TestOwnedSpellsCastOnIndependentCooldowns(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	match.applySpellChoice(player, "heavy-aura")
+	monster := &Monster{ID: 1, X: player.X + 50, Y: player.Y, HP: 1000, MaxHP: 1000, Armor: 1}
+	match.Monsters[monster.ID] = monster
+	match.Elapsed = 3 * time.Second
+	events := Events{}
+	match.updateWeapons(&events)
+	if len(match.Projectiles) == 0 || len(match.Explosions) == 0 {
+		t.Fatalf("owned spells did not both cast: projectiles=%d auras=%d", len(match.Projectiles), len(match.Explosions))
+	}
+}
+
+func TestHeavyAuraFollowsOwnerAndDamagesOnInterval(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	spell, ok := SpellByID("heavy-aura")
+	if !ok {
+		t.Skip("runtime spell data is not loaded")
+	}
+	match.applySpellChoice(player, "heavy-aura")
+	monster := &Monster{ID: 1, X: player.X + 50, Y: player.Y, HP: 100, MaxHP: 100, Armor: 1}
+	match.Monsters[monster.ID] = monster
+	match.Elapsed = spell.Cooldown
+	events := Events{}
+	match.updateWeapons(&events)
+	match.updateExplosions(&events, &events.Metrics)
+	if monster.HP != 100-(spell.Damage-1) {
+		t.Fatalf("aura hp = %d", monster.HP)
+	}
+	player.X += 20
+	match.Elapsed += TickDuration
+	match.updateExplosions(&events, &events.Metrics)
+	for _, aura := range match.Explosions {
+		if aura.X != player.X {
+			t.Fatalf("aura x = %f, player x = %f", aura.X, player.X)
+		}
+	}
+}
+
+func TestHeavyAuraExistsWithoutTargets(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	match.applySpellChoice(player, "heavy-aura")
+	match.updateWeapons(&Events{})
+	if len(match.Explosions) != 1 {
+		t.Fatalf("always-on aura count = %d, want 1", len(match.Explosions))
+	}
+}
+
+func TestSpellLevelUpgradeTargetsNamedSpell(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	match.applySpellChoice(player, "heavy-aura")
+	event := match.applyUpgrade(player, "level_up", "spell:heavy-aura:level")
+	if event.Attribute != "spell:heavy-aura:level" || player.SpellLevels["heavy-aura"] != 2 || player.SpellLevels["fireball"] != 1 {
+		t.Fatalf("targeted spell upgrade event=%#v levels=%#v", event, player.SpellLevels)
+	}
+}
+
+func TestMeteoriteDamagesMonstersButNotPlayers(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	spell, ok := SpellByID("meteorite")
+	if !ok {
+		t.Skip("runtime spell data is not loaded")
+	}
+	match.applySpellChoice(player, "meteorite")
+	monster := &Monster{ID: 1, X: player.X + 100, Y: player.Y, HP: 100, MaxHP: 100, Armor: 1}
+	match.Monsters[monster.ID] = monster
+	match.Elapsed = spell.Cooldown
+	events := Events{}
+	match.updateWeapons(&events)
+	match.Elapsed += spell.Duration
+	match.updateMeteors(&events)
+	if monster.HP != 100-(spell.Damage-1) || player.HP != player.MaxHP {
+		t.Fatalf("meteor result: monster hp=%d player hp=%d", monster.HP, player.HP)
+	}
+}
+
+func TestTrackingBeamRetargetsAfterTargetDies(t *testing.T) {
+	now := time.Unix(100, 0)
+	match := NewMatch(now, 1)
+	player := match.AddPlayer("p1", "Umar", now)
+	spell, ok := SpellByID("tracking-beam")
+	if !ok {
+		t.Skip("runtime spell data is not loaded")
+	}
+	match.applySpellChoice(player, "tracking-beam")
+	first := &Monster{ID: 1, X: player.X + 100, Y: player.Y, HP: 100, MaxHP: 100, Armor: 1}
+	second := &Monster{ID: 2, X: player.X + 200, Y: player.Y, HP: 100, MaxHP: 100, Armor: 1}
+	match.Monsters[first.ID], match.Monsters[second.ID] = first, second
+	match.Elapsed = spell.Cooldown
+	events := Events{}
+	match.updateWeapons(&events)
+	delete(match.Monsters, first.ID)
+	match.updateBeams(&events, &events.Metrics)
+	for _, beam := range match.Beams {
+		if beam.TargetID != second.ID {
+			t.Fatalf("tracking beam target = %d, want %d", beam.TargetID, second.ID)
+		}
+	}
+}
+
+func TestTreasureRateEventChangesKillCadence(t *testing.T) {
+	now := time.Unix(100, 0)
+	level := LevelDefinition{ID: "treasure-test", Duration: time.Minute, Events: []LevelEvent{{ID: "faster-treasure", Type: "treasure_rate", TreasureRate: &TreasureRateDefinition{KillsPerChest: 2}}}}
+	match := NewMatch(now, 1, level)
+	match.AddPlayer("p1", "Umar", now)
+	for id := uint64(1); id <= 2; id++ {
+		match.Monsters[id] = &Monster{ID: id, X: 100, Y: 100, Experience: 1, Score: 1}
+		match.killMonster(id, "p1", &Events{})
+	}
+	crates := 0
+	for _, pickup := range match.Pickups {
+		if pickup.Kind == "power_crate" {
+			crates++
+		}
+	}
+	if match.TreasureEveryKills != 2 || crates != 1 {
+		t.Fatalf("treasure cadence=%d crates=%d", match.TreasureEveryKills, crates)
+	}
+}

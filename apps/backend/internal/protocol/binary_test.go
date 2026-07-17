@@ -168,6 +168,7 @@ func benchmarkSnapshot() SnapshotPayload {
 			Facing: "right", HP: 100, MaxHP: 100,
 			Alive: true, LastProcessedInput: uint64(1000 + index), Kills: 78,
 			ResurrectionDurationMs: 2000, ResurrectionRadius: 120, ResurrectionImmunityDurationMs: 5000,
+			Spells: []SnapshotSpell{{ID: "fireball", Kind: "projectile", Level: 2, MaxLevel: 5, Damage: 24, CooldownMs: 690, Range: 700, ProjectileSpeed: 770, ProjectileRadius: 10, Burst: 1, Directions: 2}},
 		})
 	}
 	for index := range 150 {

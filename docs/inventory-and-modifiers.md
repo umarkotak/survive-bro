@@ -1,22 +1,22 @@
 # Inventory and Modifier Model
 
-The canonical content source is `game-data/game.json`. Character, spell, enemy, and level sections are loaded directly at server startup. Inventory, buffs, and modifier evaluation remain design contracts until the inventory milestone replaces direct random upgrades.
+The canonical content source is `game-data/game.json`. Character, spell, enemy, level, spell-slot, and spell-level modifier sections are loaded directly at server startup. Unique spell acquisition, authoritative per-spell snapshots, deterministic spell-level rewards, and clickable HUD spell details are runtime. Buff inventory and full generic modifier evaluation remain pending.
 
 ## Inventory
 
 Each player owns two independent collections:
 
-- Spell inventory: maximum 5 entries.
+- Spell inventory: maximum entries are configured by `inventory.spellSlots`, currently `4`.
 - Buff inventory: maximum 5 entries.
 
 An inventory entry is `{ id, level }`. Level-up and treasure rewards use the same eligibility rules. Both are team-wide triggers: every player independently receives one eligible reward when the team levels up or any living player collects a treasure chest.
 
 1. An unowned item is eligible only when its inventory has an empty slot.
-2. An owned item is eligible while below its maximum level.
-3. Selecting an unowned item adds it at level 1.
-4. Selecting an owned item increases it exactly one level.
-5. Full inventories exclude unowned items; max-level entries are also excluded.
-6. If no item is eligible, no reward is applied. Never silently replace an equipped item.
+2. Spell chests exclude every owned spell; duplicate spell entries are invalid.
+3. Selecting an unowned spell adds it at level 1 without disabling existing spells.
+4. Every owned spell auto-casts on its own cooldown; Aura is continuously active instead.
+5. Chest pools are event-configured as `all` or explicit IDs and roll three random unowned spells. A chest with no eligible spell becomes a treasure offer for that player.
+6. Buff and future general-reward leveling rules remain pending. Never silently replace an owned item.
 
 The server owns inventory, rolls, levels, resolved modifiers, and combat. The client displays offers/history and predicts visuals only.
 
@@ -104,3 +104,11 @@ Base character, spell, enemy, and level content is already loaded from JSON at s
 5. Add the 5-spell/5-buff inventory UI and manual acceptance gate.
 
 Keeping this migration explicit prevents two simultaneous sources of gameplay truth.
+
+## Laboratory spell progression
+
+Heavy Aura starts as a `110`-unit field dealing `4` every `500 ms`. Levels add radius `+30`, damage `+2`, damage interval `-75 ms`, radius `+40`, damage `+4`, then damage interval `-75 ms`.
+
+Meteorite starts by marking the nearest enemy within `700` units for `900 ms`, then dealing `42` in an `85`-unit area. Levels add radius `+20`, damage `+16`, warning `-200 ms`, cooldown `-400 ms`, radius `+25`, damage `+24`, then a second nearest-enemy meteor.
+
+Tracking Beam starts as a `600 x 18` piercing channel lasting `1200 ms` and dealing `6` every `250 ms`. Levels add length `+100`, damage `+3`, duration `+400 ms`, width `+8`, damage interval `-50 ms`, cooldown `-300 ms`, then a second independently tracked beam.

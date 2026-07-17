@@ -9,6 +9,7 @@ import type {
   Envelope,
   MatchEndedPayload,
   MatchStartedPayload,
+  MonsterAttackedPayload,
   ProjectileRemovedPayload,
   ProjectileSpawnedPayload,
   RoomStatePayload,
@@ -56,6 +57,9 @@ interface MonsterView {
   hp: number
   typeId: SnapshotMonster['typeId']
   shadowOffset: number
+  attackTween: Phaser.Tweens.Tween | null
+  baseScaleX: number
+  baseScaleY: number
 }
 
 interface ProjectileView {
@@ -182,6 +186,9 @@ export class GameScene extends Phaser.Scene {
       case 'damage_applied_batch':
         this.handleDamageApplied(message.payload as DamageAppliedBatchPayload)
         break
+      case 'monster_attacked':
+        this.handleMonsterAttacked(message.payload as MonsterAttackedPayload)
+        break
       case 'match_ended':
         this.handleMatchEnded(message.payload as MatchEndedPayload)
         break
@@ -197,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     for (const sprite of this.obstacleSprites) sprite.destroy()
     this.obstacleSprites.length = 0
     for (const view of this.monsters.values()) {
+      view.attackTween?.destroy()
       view.sprite.destroy()
       view.shadow.destroy()
     }
@@ -297,6 +305,7 @@ export class GameScene extends Phaser.Scene {
         projectileSpeed: local.projectileSpeed,
         spellBurst: local.spellBurst,
         spellDirections: local.spellDirections,
+        spells: local.spells,
       })
     }
   }
@@ -336,7 +345,7 @@ export class GameScene extends Phaser.Scene {
       outcome: payload.outcome,
       level: payload.teamLevel,
       kills: payload.totalKills,
-      remainingMs: Math.max(0, 6 * 60 * 1000 - payload.survivalMs),
+      remainingMs: Math.max(0, this.session.bridge.getSnapshot().levelDurationMs - payload.survivalMs),
       score: payload.score,
     })
   }
@@ -608,14 +617,18 @@ export class GameScene extends Phaser.Scene {
       if (!view) {
         const content = SLIME_STAGES[monster.typeId]
         const displaySize = content.displaySize
+        const sprite = this.add.image(monster.x, monster.y, content.texture).setDisplaySize(displaySize, displaySize)
         view = {
           shadow: this.add.image(monster.x, monster.y + displaySize * 0.3, 'entity-shadow').setDisplaySize(displaySize * 0.72, displaySize * 0.26),
-          sprite: this.add.image(monster.x, monster.y, content.texture).setDisplaySize(displaySize, displaySize),
+          sprite,
           targetX: monster.x,
           targetY: monster.y,
           hp: monster.hp,
           typeId: monster.typeId,
           shadowOffset: displaySize * 0.3,
+          attackTween: null,
+          baseScaleX: sprite.scaleX,
+          baseScaleY: sprite.scaleY,
         }
         this.monsters.set(monster.id, view)
       }
@@ -629,6 +642,7 @@ export class GameScene extends Phaser.Scene {
     }
     for (const [id, view] of this.monsters) {
       if (!active.has(id)) {
+        view.attackTween?.destroy()
         view.sprite.destroy()
         view.shadow.destroy()
         this.monsters.delete(id)
@@ -636,12 +650,38 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private handleMonsterAttacked(payload: MonsterAttackedPayload): void {
+    if (payload.spellId !== 'slime-punch') return
+    const view = this.monsters.get(payload.monsterId)
+    if (!view?.sprite.active) return
+    const target = this.players.get(payload.targetPlayerId)
+    if (target) view.sprite.setFlipX(target.sprite.x < view.sprite.x)
+    view.attackTween?.destroy()
+    const baseScaleX = view.baseScaleX
+    const baseScaleY = view.baseScaleY
+    view.sprite.setScale(baseScaleX, baseScaleY).setAngle(0)
+    view.attackTween = this.tweens.add({
+      targets: view.sprite,
+      scaleX: baseScaleX * 1.24,
+      scaleY: baseScaleY * 0.76,
+      angle: view.sprite.flipX ? -5 : 5,
+      duration: 85,
+      ease: 'Power2',
+      yoyo: true,
+      onComplete: () => {
+        if (view.sprite.active) view.sprite.setScale(baseScaleX, baseScaleY).setAngle(0)
+        view.attackTween = null
+      },
+    })
+  }
+
   private syncBeams(beams: SnapshotBeam[]): void {
     const active = new Set(beams.map((beam) => beam.id))
     for (const beam of beams) {
       let view = this.beams.get(beam.id)
       if (!view) {
-        view = { shape: this.add.rectangle(beam.x, beam.y, beam.length, beam.width, 0xb8f3ff, 0.72).setOrigin(0, 0.5).setStrokeStyle(2, 0xffffff, 0.88).setBlendMode(Phaser.BlendModes.ADD) }
+		const tracking = beam.spellId === 'tracking-beam'
+		view = { shape: this.add.rectangle(beam.x, beam.y, beam.length, beam.width, tracking ? 0x67f5ff : 0xb8f3ff, tracking ? 0.88 : 0.72).setOrigin(0, 0.5).setStrokeStyle(tracking ? 3 : 2, 0xffffff, 0.88).setBlendMode(Phaser.BlendModes.ADD) }
         this.beams.set(beam.id, view)
         const owner = this.players.get(beam.ownerId)
         if (owner) owner.attackUntil = this.time.now + Math.min(beam.remainingMs, 1000)
@@ -659,10 +699,11 @@ export class GameScene extends Phaser.Scene {
     for (const explosion of explosions) {
       let view = this.explosions.get(explosion.id)
       if (!view) {
-        view = { shape: this.add.circle(explosion.x, explosion.y, explosion.radius, 0xff7b35, 0.34).setStrokeStyle(5, 0xffd36a, 0.8).setBlendMode(Phaser.BlendModes.ADD) }
+		const aura = explosion.spellId === 'heavy-aura'
+		view = { shape: this.add.circle(explosion.x, explosion.y, explosion.radius, aura ? 0x6542c7 : 0xff7b35, aura ? 0.18 : 0.34).setStrokeStyle(aura ? 4 : 5, aura ? 0xb89cff : 0xffd36a, 0.8).setBlendMode(Phaser.BlendModes.ADD) }
         this.explosions.set(explosion.id, view)
       }
-      const pulse = 0.92 + Math.sin(this.time.now / 70) * 0.08
+	  const pulse = explosion.spellId === 'heavy-aura' ? 1 : 0.92 + Math.sin(this.time.now / 70) * 0.08
       view.shape.setPosition(explosion.x, explosion.y).setRadius(explosion.radius).setScale(pulse).setDepth(explosion.y + 1)
     }
     for (const [id, view] of this.explosions) {
@@ -675,15 +716,19 @@ export class GameScene extends Phaser.Scene {
 	for (const meteor of meteors) {
 		let view = this.meteors.get(meteor.id)
 		if (!view) {
+			const zoneColor = meteor.friendly ? 0x4ad9ff : 0xff3d18
+			const edgeColor = meteor.friendly ? 0xb8f7ff : 0xffc247
 			view = {
-				zone: this.add.circle(meteor.x, meteor.y, meteor.radius, 0xff3d18, 0.08).setStrokeStyle(5, 0xffc247, 0.9),
-				marker: this.add.circle(meteor.x, meteor.y, 12, 0xfff0b0, 0.95).setStrokeStyle(3, 0xff4b1f, 1),
+				zone: this.add.circle(meteor.x, meteor.y, meteor.radius, zoneColor, 0.08).setStrokeStyle(5, edgeColor, 0.9),
+				marker: this.add.circle(meteor.x, meteor.y, 12, meteor.friendly ? 0xe4fdff : 0xfff0b0, 0.95).setStrokeStyle(3, meteor.friendly ? 0x2589b8 : 0xff4b1f, 1),
 			}
 			this.meteors.set(meteor.id, view)
 		}
 		const warning = meteor.impactInMs > 0
 		const pulse = 0.94 + Math.sin(this.time.now / (warning ? 90 : 55)) * 0.06
-		view.zone.setPosition(meteor.x, meteor.y).setRadius(meteor.radius).setScale(pulse).setFillStyle(warning ? 0xff3d18 : 0xff6a18, warning ? 0.08 : 0.38).setStrokeStyle(warning ? 5 : 2, warning ? 0xffc247 : 0xff7b35, warning ? 0.9 : 0.5).setDepth(meteor.y + 1)
+		const fill = meteor.friendly ? (warning ? 0x4ad9ff : 0x8deaff) : (warning ? 0xff3d18 : 0xff6a18)
+		const edge = meteor.friendly ? (warning ? 0xb8f7ff : 0x4ad9ff) : (warning ? 0xffc247 : 0xff7b35)
+		view.zone.setPosition(meteor.x, meteor.y).setRadius(meteor.radius).setScale(pulse).setFillStyle(fill, warning ? 0.08 : 0.38).setStrokeStyle(warning ? 5 : 2, edge, warning ? 0.9 : 0.5).setDepth(meteor.y + 1)
 		view.marker.setPosition(meteor.x, warning ? meteor.y - Math.min(180, 30 + meteor.impactInMs * 0.1) : meteor.y).setScale(warning ? 1 : 2.2).setAlpha(warning ? 1 : 0.35).setDepth(meteor.y + 2)
 	}
 	for (const [id, view] of this.meteors) {
@@ -696,7 +741,7 @@ export class GameScene extends Phaser.Scene {
     for (const pickup of pickups) {
       let view = this.pickups.get(pickup.id)
       if (!view) {
-        const texture = pickup.kind === 'power_crate' ? 'power-crate' : 'experience'
+		const texture = pickup.kind === 'power_crate' ? 'power-crate' : pickup.kind === 'spell_chest' ? 'spell-chest' : 'experience'
         view = { sprite: this.add.image(pickup.x, pickup.y, texture).setDepth(pickup.y), kind: pickup.kind, targetX: pickup.x, targetY: pickup.y }
         this.pickups.set(pickup.id, view)
       }
@@ -750,6 +795,7 @@ export class GameScene extends Phaser.Scene {
   private cleanup(): void {
     this.session.bridge.setVirtualMovement(0, 0)
     this.lastLocalHP = null
+    for (const monster of this.monsters.values()) monster.attackTween?.destroy()
     for (const beam of this.beams.values()) beam.shape.destroy()
     this.beams.clear()
     for (const explosion of this.explosions.values()) explosion.shape.destroy()

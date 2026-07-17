@@ -401,8 +401,8 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 		if value.TeamLevel < 1 || value.TeamLevel > math.MaxUint16 || value.PendingCount < 0 || value.PendingCount > math.MaxUint8 || value.TotalCount < 1 || value.TotalCount > math.MaxUint8 {
 			return fmt.Errorf("upgrade offer counts or team level are invalid")
 		}
-		if len(value.Choices) != maxUpgradeChoices {
-			return fmt.Errorf("upgrade offer must contain exactly %d choices", maxUpgradeChoices)
+		if len(value.Choices) < 1 || len(value.Choices) > maxUpgradeChoices {
+			return fmt.Errorf("upgrade offer must contain 1 to %d choices", maxUpgradeChoices)
 		}
 		e.u32(offerID)
 		source, err := encodeUpgradeSource(value.Source)
@@ -451,6 +451,20 @@ func (e *binaryEncoder) payload(messageType MessageType, payload any) error {
 				return err
 			}
 		}
+	case TypeMonsterAttacked:
+		value, ok := payload.(MonsterAttackedPayload)
+		if !ok {
+			return payloadTypeError(messageType, payload)
+		}
+		monsterID, err := uint32Value(value.MonsterID, "monster attack ID")
+		if err != nil {
+			return err
+		}
+		e.u32(monsterID)
+		if err := e.string(value.SpellID); err != nil {
+			return err
+		}
+		return e.string(value.TargetPlayerID)
 	case TypeMatchEnded:
 		value, ok := payload.(MatchEndedPayload)
 		if !ok {
@@ -599,6 +613,66 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 			return err
 		}
 		e.u32(immunityRemaining)
+		if len(player.Spells) > 8 {
+			return fmt.Errorf("player spell count exceeds 8")
+		}
+		e.u8(uint8(len(player.Spells)))
+		for _, spell := range player.Spells {
+			if err := e.string(spell.ID); err != nil {
+				return err
+			}
+			if err := e.string(spell.Kind); err != nil {
+				return err
+			}
+			if spell.Level < 1 || spell.Level > math.MaxUint8 || spell.MaxLevel < spell.Level || spell.MaxLevel > math.MaxUint8 {
+				return fmt.Errorf("resolved spell levels are invalid")
+			}
+			if spell.Burst < 1 || spell.Burst > 2 || spell.Directions < 1 || spell.Directions > 4 {
+				return fmt.Errorf("resolved spell burst or directions are invalid")
+			}
+			damage, err := nonNegativeUint16(spell.Damage, "resolved spell damage")
+			if err != nil {
+				return err
+			}
+			cooldown, err := nonNegativeUint32(spell.CooldownMs, "resolved spell cooldown ms")
+			if err != nil {
+				return err
+			}
+			duration, err := nonNegativeUint32(spell.DurationMs, "resolved spell duration ms")
+			if err != nil {
+				return err
+			}
+			interval, err := nonNegativeUint32(spell.DamageIntervalMs, "resolved spell damage interval ms")
+			if err != nil {
+				return err
+			}
+			impactDamage, err := nonNegativeUint16(spell.ImpactDamage, "resolved spell impact damage")
+			if err != nil {
+				return err
+			}
+			e.u8(uint8(spell.Level))
+			e.u8(uint8(spell.MaxLevel))
+			e.u16(damage)
+			e.u32(cooldown)
+			for _, field := range []float64{spell.Range, spell.ProjectileSpeed, spell.ProjectileRadius} {
+				if err := e.f32(field); err != nil {
+					return err
+				}
+			}
+			e.u8(uint8(spell.Burst))
+			e.u8(uint8(spell.Directions))
+			for _, field := range []float64{spell.BeamLength, spell.BeamWidth} {
+				if err := e.f32(field); err != nil {
+					return err
+				}
+			}
+			e.u32(duration)
+			e.u32(interval)
+			if err := e.f32(spell.ExplosionRadius); err != nil {
+				return err
+			}
+			e.u16(impactDamage)
+		}
 	}
 	if len(value.Monsters) > math.MaxUint16 {
 		return fmt.Errorf("monster count exceeds 65535")
@@ -714,6 +788,7 @@ func (e *binaryEncoder) snapshot(value SnapshotPayload) error {
 		}
 		e.u32(impact)
 		e.u32(remaining)
+		e.bool(meteor.Friendly)
 	}
 	if len(value.Pickups) > math.MaxUint16 {
 		return fmt.Errorf("pickup count exceeds 65535")
@@ -1023,7 +1098,7 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if choiceCount != maxUpgradeChoices || pendingCount > totalCount || totalCount == 0 {
+		if choiceCount < 1 || choiceCount > maxUpgradeChoices || pendingCount > totalCount || totalCount == 0 {
 			return nil, fmt.Errorf("upgrade offer counts are invalid")
 		}
 		choices := make([]UpgradeChoice, 0, choiceCount)
@@ -1074,6 +1149,17 @@ func (d *binaryDecoder) payload(messageType MessageType) (any, error) {
 		}
 		finalValue, err := d.f32()
 		return UpgradeAppliedPayload{PlayerID: playerID, Source: source, Attribute: attribute, BaseValue: baseValue, AddedValue: addedValue, FinalValue: finalValue}, err
+	case TypeMonsterAttacked:
+		monsterID, err := d.u32()
+		if err != nil {
+			return nil, err
+		}
+		spellID, err := d.string()
+		if err != nil {
+			return nil, err
+		}
+		targetPlayerID, err := d.string()
+		return MonsterAttackedPayload{MonsterID: uint64(monsterID), SpellID: spellID, TargetPlayerID: targetPlayerID}, err
 	case TypeMatchEnded:
 		outcomeID, err := d.u8()
 		if err != nil {
@@ -1413,7 +1499,11 @@ func (d *binaryDecoder) snapshot() (SnapshotPayload, error) {
 		if err != nil {
 			return SnapshotPayload{}, err
 		}
-		meteors = append(meteors, SnapshotMeteor{ID: uint64(id), X: x, Y: y, Radius: radius, ImpactInMs: int64(impact), RemainingMs: int64(remaining)})
+		friendly, err := d.bool()
+		if err != nil {
+			return SnapshotPayload{}, err
+		}
+		meteors = append(meteors, SnapshotMeteor{ID: uint64(id), X: x, Y: y, Radius: radius, ImpactInMs: int64(impact), RemainingMs: int64(remaining), Friendly: friendly})
 	}
 	pickupCount, err := d.u16()
 	if err != nil {
@@ -1553,6 +1643,85 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 	if err != nil {
 		return SnapshotPlayer{}, err
 	}
+	spellCount, err := d.u8()
+	if err != nil || spellCount > 8 {
+		return SnapshotPlayer{}, fmt.Errorf("invalid player spell count %d", spellCount)
+	}
+	spells := make([]SnapshotSpell, 0, spellCount)
+	for range spellCount {
+		spellID, err := d.string()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		kind, err := d.string()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		level, err := d.u8()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		maxLevel, err := d.u8()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		damage, err := d.u16()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		cooldown, err := d.u32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		rangeValue, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		projectileSpeed, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		projectileRadius, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		burst, err := d.u8()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		directions, err := d.u8()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		beamLength, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		beamWidth, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		duration, err := d.u32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		interval, err := d.u32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		explosionRadius, err := d.f32()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		impactDamage, err := d.u16()
+		if err != nil {
+			return SnapshotPlayer{}, err
+		}
+		if level < 1 || maxLevel < level || burst < 1 || burst > 2 || directions < 1 || directions > 4 {
+			return SnapshotPlayer{}, fmt.Errorf("invalid resolved spell values")
+		}
+		spells = append(spells, SnapshotSpell{ID: spellID, Kind: kind, Level: int(level), MaxLevel: int(maxLevel), Damage: int(damage), CooldownMs: int64(cooldown), Range: rangeValue, ProjectileSpeed: projectileSpeed, ProjectileRadius: projectileRadius, Burst: int(burst), Directions: int(directions), BeamLength: beamLength, BeamWidth: beamWidth, DurationMs: int64(duration), DamageIntervalMs: int64(interval), ExplosionRadius: explosionRadius, ImpactDamage: int(impactDamage)})
+	}
 	facing := "right"
 	if flags&1 != 0 {
 		facing = "left"
@@ -1563,7 +1732,7 @@ func (d *binaryDecoder) snapshotPlayer() (SnapshotPlayer, error) {
 		SpellDamage: int(spellDamage), ProjectileSpeed: projectileSpeed, SpellBurst: int(spellBurst), SpellDirections: int(spellDirections),
 		Facing: facing, HP: int(hp), MaxHP: int(maxHP), Alive: flags&2 != 0,
 		LastProcessedInput: uint64(lastInput), Kills: int(kills), ResurrectionDurationMs: int64(resurrectionDuration), ResurrectionRadius: resurrectionRadius,
-		ResurrectionImmunityDurationMs: int64(immunityDuration), ResurrectionProgress: resurrectionProgress, ResurrectionPending: flags&4 != 0, ImmunityRemainingMs: int64(immunityRemaining),
+		ResurrectionImmunityDurationMs: int64(immunityDuration), ResurrectionProgress: resurrectionProgress, ResurrectionPending: flags&4 != 0, ImmunityRemainingMs: int64(immunityRemaining), Spells: spells,
 	}, nil
 }
 
@@ -1682,6 +1851,8 @@ func encodePickupKind(value string) (uint8, error) {
 		return 0, nil
 	case "power_crate":
 		return 1, nil
+	case "spell_chest":
+		return 2, nil
 	default:
 		return 0, fmt.Errorf("unknown pickup kind %q", value)
 	}
@@ -1693,6 +1864,8 @@ func decodePickupKind(value uint8) (string, error) {
 		return "experience", nil
 	case 1:
 		return "power_crate", nil
+	case 2:
+		return "spell_chest", nil
 	default:
 		return "", fmt.Errorf("unknown pickup kind %d", value)
 	}
@@ -1704,6 +1877,8 @@ func encodeUpgradeSource(value string) (uint8, error) {
 		return 0, nil
 	case "treasure_chest":
 		return 1, nil
+	case "spell_chest":
+		return 2, nil
 	default:
 		return 0, fmt.Errorf("unknown upgrade source %q", value)
 	}
@@ -1715,6 +1890,8 @@ func decodeUpgradeSource(value uint8) (string, error) {
 		return "level_up", nil
 	case 1:
 		return "treasure_chest", nil
+	case 2:
+		return "spell_chest", nil
 	default:
 		return "", fmt.Errorf("unknown upgrade source %d", value)
 	}

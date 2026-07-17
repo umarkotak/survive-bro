@@ -5,7 +5,7 @@ import "time"
 const (
 	TickDuration                  = 50 * time.Millisecond
 	SnapshotEveryTicks            = 2
-	MatchDuration                 = 6 * time.Minute
+	MatchDuration                 = 15 * time.Minute
 	InputStaleAfter               = 250 * time.Millisecond
 	WorldWidth                    = 3200.0
 	WorldHeight                   = 1800.0

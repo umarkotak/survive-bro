@@ -30,6 +30,7 @@ export class BootScene extends Phaser.Scene {
     this.createRocketTextures()
     this.createExperienceTexture()
     this.createPowerCrateTexture()
+    this.createSpellChestTexture()
     this.scene.start('GameScene')
   }
 
@@ -100,6 +101,16 @@ export class BootScene extends Phaser.Scene {
     graphics.fillStyle(0xfff2a5, 1)
     graphics.fillCircle(22, 22, 5)
     graphics.generateTexture('power-crate', 48, 48)
+    graphics.destroy()
+  }
+
+  private createSpellChestTexture(): void {
+    const graphics = this.make.graphics({ x: 0, y: 0 })
+    graphics.fillStyle(0x122c34, 0.35).fillEllipse(24, 43, 42, 12)
+    graphics.fillStyle(0x38d7dd, 1).fillRoundedRect(4, 8, 40, 34, 7)
+    graphics.fillStyle(0x155f77, 1).fillRect(4, 17, 40, 7).fillRect(18, 8, 8, 34)
+    graphics.fillStyle(0xd8ffff, 1).fillCircle(22, 22, 5)
+    graphics.generateTexture('spell-chest', 48, 48)
     graphics.destroy()
   }
 }

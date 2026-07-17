@@ -18,6 +18,7 @@ export type MessageType =
   | 'damage_applied_batch'
   | 'upgrade_offered'
   | 'upgrade_applied'
+  | 'monster_attacked'
   | 'error'
   | 'server_shutdown'
 
@@ -39,6 +40,7 @@ const typeToId: Record<MessageType, number> = {
   damage_applied_batch: 74,
   upgrade_offered: 75,
   upgrade_applied: 76,
+  monster_attacked: 77,
   error: 126,
   server_shutdown: 127,
 }
@@ -89,7 +91,7 @@ export interface MatchStartedPayload {
   durationMs: number
   events: SystemEventPayload[]
 }
-export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'monster_buff' | 'meteor_shower' | 'boss' | 'end'; title: string; description: string; atMs: number }
+export interface SystemEventPayload { id: string; type: 'spawn_rate' | 'monster_buff' | 'meteor_shower' | 'treasure_rate' | 'spell_chest' | 'boss' | 'end'; title: string; description: string; atMs: number }
 
 export interface SnapshotPlayer {
   id: string
@@ -120,7 +122,9 @@ export interface SnapshotPlayer {
   resurrectionProgress: number
   resurrectionPending: boolean
   immunityRemainingMs: number
+  spells: SnapshotSpell[]
 }
+export interface SnapshotSpell { id: string; kind: string; level: number; maxLevel: number; damage: number; cooldownMs: number; range: number; projectileSpeed: number; projectileRadius: number; burst: number; directions: number; beamLength: number; beamWidth: number; durationMs: number; damageIntervalMs: number; explosionRadius: number; impactDamage: number }
 
 export interface SnapshotMonster {
   id: number
@@ -134,13 +138,13 @@ export interface SnapshotMonster {
 
 export interface SnapshotPickup {
   id: number
-  kind: 'experience' | 'power_crate'
+  kind: 'experience' | 'power_crate' | 'spell_chest'
   x: number
   y: number
 }
 export interface SnapshotBeam { id: number; ownerId: string; spellId: string; x: number; y: number; angle: number; length: number; width: number; remainingMs: number }
 export interface SnapshotExplosion { id: number; ownerId: string; spellId: string; x: number; y: number; radius: number; remainingMs: number }
-export interface SnapshotMeteor { id: number; x: number; y: number; radius: number; impactInMs: number; remainingMs: number }
+export interface SnapshotMeteor { id: number; x: number; y: number; radius: number; impactInMs: number; remainingMs: number; friendly: boolean }
 
 export interface SnapshotPayload {
   tick: number
@@ -204,7 +208,7 @@ export interface ErrorPayload {
   message: string
 }
 
-export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration' | 'explosion_radius' | 'explosion_duration'
+export type UpgradeAttribute = 'max_health' | 'armor' | 'movement_speed' | 'health_regeneration' | 'attack_buff' | 'cooldown' | 'spell_damage' | 'projectile_speed' | 'spell_burst' | 'spell_directions' | 'beam_length' | 'beam_width' | 'spell_duration' | 'explosion_radius' | 'explosion_duration' | `spell:${string}`
 export interface UpgradeChoice {
   attribute: UpgradeAttribute
   currentValue: number
@@ -213,7 +217,7 @@ export interface UpgradeChoice {
 }
 export interface UpgradeOfferedPayload {
   offerId: number
-  source: 'level_up' | 'treasure_chest'
+  source: 'level_up' | 'treasure_chest' | 'spell_chest'
   teamLevel: number
   deadlineMs: number
   pendingCount: number
@@ -223,12 +227,13 @@ export interface UpgradeOfferedPayload {
 }
 export interface UpgradeAppliedPayload {
   playerId: string
-  source: 'level_up' | 'treasure_chest'
+  source: 'level_up' | 'treasure_chest' | 'spell_chest'
   attribute: UpgradeAttribute
   baseValue: number
   addedValue: number
   finalValue: number
 }
+export interface MonsterAttackedPayload { monsterId: number; spellId: string; targetPlayerId: string }
 
 export function createEnvelope<T>(type: MessageType, payload: T, requestId?: string): Envelope<T> {
   return { v: PROTOCOL_VERSION, type, requestId, payload }
@@ -371,9 +376,9 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
     }
     case 'upgrade_offered': {
       const payload = envelope.payload as UpgradeOfferedPayload
-      if (payload.choices.length !== 3) throw new Error('Upgrade offer must contain exactly 3 choices')
+      if (payload.choices.length < 1 || payload.choices.length > 3) throw new Error('Upgrade offer must contain 1 to 3 choices')
       writer.u32(payload.offerId)
-      writer.u8(payload.source === 'level_up' ? 0 : 1)
+      writer.u8(payload.source === 'level_up' ? 0 : payload.source === 'treasure_chest' ? 1 : 2)
       writer.u16(payload.teamLevel)
       writer.i64(payload.deadlineMs)
       writer.u8(payload.pendingCount)
@@ -400,11 +405,18 @@ function encodePayload(writer: BinaryWriter, envelope: Envelope): void {
     case 'upgrade_applied': {
       const payload = envelope.payload as UpgradeAppliedPayload
       writer.string(payload.playerId)
-      writer.u8(payload.source === 'level_up' ? 0 : 1)
+      writer.u8(payload.source === 'level_up' ? 0 : payload.source === 'treasure_chest' ? 1 : 2)
       writer.string(payload.attribute)
       writer.f32(payload.baseValue)
       writer.f32(payload.addedValue)
       writer.f32(payload.finalValue)
+      break
+    }
+    case 'monster_attacked': {
+      const payload = envelope.payload as MonsterAttackedPayload
+      writer.u32(payload.monsterId)
+      writer.string(payload.spellId)
+      writer.string(payload.targetPlayerId)
       break
     }
     case 'error': {
@@ -450,6 +462,14 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
     writer.u32(player.resurrectionImmunityDurationMs)
     writer.f32(player.resurrectionProgress)
     writer.u32(player.immunityRemainingMs)
+    writer.u8(player.spells.length)
+    for (const spell of player.spells) {
+      writer.string(spell.id); writer.string(spell.kind); writer.u8(spell.level); writer.u8(spell.maxLevel)
+      writer.u16(spell.damage); writer.u32(spell.cooldownMs)
+      writer.f32(spell.range); writer.f32(spell.projectileSpeed); writer.f32(spell.projectileRadius)
+      writer.u8(spell.burst); writer.u8(spell.directions); writer.f32(spell.beamLength); writer.f32(spell.beamWidth)
+      writer.u32(spell.durationMs); writer.u32(spell.damageIntervalMs); writer.f32(spell.explosionRadius); writer.u16(spell.impactDamage)
+    }
   }
   writer.u16(payload.monsters.length)
   for (const monster of payload.monsters) {
@@ -466,7 +486,7 @@ function encodeSnapshot(writer: BinaryWriter, payload: SnapshotPayload): void {
   writer.u16(payload.explosions.length)
   for (const explosion of payload.explosions) { writer.u32(explosion.id); writer.string(explosion.ownerId); writer.string(explosion.spellId); writer.f32(explosion.x); writer.f32(explosion.y); writer.f32(explosion.radius); writer.u32(explosion.remainingMs) }
   writer.u16(payload.meteors.length)
-  for (const meteor of payload.meteors) { writer.u32(meteor.id); writer.f32(meteor.x); writer.f32(meteor.y); writer.f32(meteor.radius); writer.u32(meteor.impactInMs); writer.u32(meteor.remainingMs) }
+  for (const meteor of payload.meteors) { writer.u32(meteor.id); writer.f32(meteor.x); writer.f32(meteor.y); writer.f32(meteor.radius); writer.u32(meteor.impactInMs); writer.u32(meteor.remainingMs); writer.bool(meteor.friendly) }
   writer.u16(payload.pickups.length)
   for (const pickup of payload.pickups) {
     writer.u32(pickup.id)
@@ -538,21 +558,21 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
     case 'upgrade_offered': {
       const offerId = reader.u32()
       const sourceId = reader.u8()
-      if (sourceId > 1) throw new Error(`Unknown upgrade source: ${sourceId}`)
+      if (sourceId > 2) throw new Error(`Unknown upgrade source: ${sourceId}`)
       const teamLevel = reader.u16()
       const deadlineMs = reader.i64()
       const pendingCount = reader.u8()
       const totalCount = reader.u8()
       const selected = reader.bool()
       const choiceCount = reader.u8()
-      if (choiceCount !== 3 || totalCount === 0 || pendingCount > totalCount) throw new Error('Upgrade offer counts are invalid')
+      if (choiceCount < 1 || choiceCount > 3 || totalCount === 0 || pendingCount > totalCount) throw new Error('Upgrade offer counts are invalid')
       const choices: UpgradeChoice[] = []
       for (let index = 0; index < choiceCount; index += 1) {
         const attribute = reader.string()
-        if (!upgradeAttributes.has(attribute as UpgradeAttribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
+        if (!isUpgradeAttribute(attribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
         choices.push({ attribute: attribute as UpgradeAttribute, currentValue: reader.f32(), addedValue: reader.f32(), finalValue: reader.f32() })
       }
-      return { offerId, source: sourceId === 0 ? 'level_up' : 'treasure_chest', teamLevel, deadlineMs, pendingCount, totalCount, selected, choices } satisfies UpgradeOfferedPayload
+      return { offerId, source: decodeUpgradeSource(sourceId), teamLevel, deadlineMs, pendingCount, totalCount, selected, choices } satisfies UpgradeOfferedPayload
     }
     case 'match_ended':
       return {
@@ -561,11 +581,13 @@ function decodePayload(reader: BinaryReader, type: MessageType): unknown {
     case 'upgrade_applied': {
       const playerId = reader.string()
       const sourceId = reader.u8()
-      if (sourceId > 1) throw new Error(`Unknown upgrade source: ${sourceId}`)
+      if (sourceId > 2) throw new Error(`Unknown upgrade source: ${sourceId}`)
       const attribute = reader.string()
-      if (!upgradeAttributes.has(attribute as UpgradeAttribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
-      return { playerId, source: sourceId === 0 ? 'level_up' : 'treasure_chest', attribute: attribute as UpgradeAttribute, baseValue: reader.f32(), addedValue: reader.f32(), finalValue: reader.f32() } satisfies UpgradeAppliedPayload
+      if (!isUpgradeAttribute(attribute)) throw new Error(`Unknown upgrade attribute: ${attribute}`)
+      return { playerId, source: decodeUpgradeSource(sourceId), attribute: attribute as UpgradeAttribute, baseValue: reader.f32(), addedValue: reader.f32(), finalValue: reader.f32() } satisfies UpgradeAppliedPayload
     }
+    case 'monster_attacked':
+      return { monsterId: reader.u32(), spellId: reader.string(), targetPlayerId: reader.string() } satisfies MonsterAttackedPayload
     case 'error':
       return { code: reader.string(), message: reader.string() } satisfies ErrorPayload
     case 'server_shutdown':
@@ -612,7 +634,7 @@ function decodeMatchStarted(reader: BinaryReader): MatchStartedPayload {
   const events: SystemEventPayload[] = []
   for (let index = 0; index < eventCount; index += 1) {
     const id = reader.string(), type = reader.string(), title = reader.string(), description = reader.string(), atMs = reader.u32()
-    if (type !== 'spawn_rate' && type !== 'monster_buff' && type !== 'meteor_shower' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
+    if (type !== 'spawn_rate' && type !== 'monster_buff' && type !== 'meteor_shower' && type !== 'treasure_rate' && type !== 'spell_chest' && type !== 'boss' && type !== 'end') throw new Error(`Unknown system event type: ${type}`)
     events.push({ id, type, title, description, atMs })
   }
   return { roomName, mapId, mapWidth, mapHeight, startedAtMs, obstacles, durationMs, events }
@@ -639,12 +661,22 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
     const cooldownPercent = reader.f32()
     const flags = reader.u8()
     if ((flags & ~7) !== 0) throw new Error(`Invalid snapshot player flags: ${flags}`)
+    const hp = reader.u16(), maxHp = reader.u16(), spellDamage = reader.u16(), projectileSpeed = reader.f32(), spellBurst = reader.u8(), spellDirections = reader.u8()
+    const lastProcessedInput = reader.u32(), kills = reader.u32(), resurrectionDurationMs = reader.u32(), resurrectionRadius = reader.f32()
+    const resurrectionImmunityDurationMs = reader.u32(), resurrectionProgress = reader.f32(), immunityRemainingMs = reader.u32()
+    const spellCount = reader.u8()
+    if (spellCount > 8) throw new Error(`Player spell count exceeds limit: ${spellCount}`)
+    const spells: SnapshotSpell[] = []
+    for (let spellIndex = 0; spellIndex < spellCount; spellIndex += 1) {
+      const spell = { id: reader.string(), kind: reader.string(), level: reader.u8(), maxLevel: reader.u8(), damage: reader.u16(), cooldownMs: reader.u32(), range: reader.f32(), projectileSpeed: reader.f32(), projectileRadius: reader.f32(), burst: reader.u8(), directions: reader.u8(), beamLength: reader.f32(), beamWidth: reader.f32(), durationMs: reader.u32(), damageIntervalMs: reader.u32(), explosionRadius: reader.f32(), impactDamage: reader.u16() }
+      if (spell.level < 1 || spell.maxLevel < spell.level || spell.burst < 1 || spell.burst > 2 || spell.directions < 1 || spell.directions > 4) throw new Error('Invalid resolved spell values')
+      spells.push(spell)
+    }
     players.push({
       id, displayName, characterId, x, y, velocityX, velocityY, movementSpeed, armorPercent, healthRegeneration, attackBuffPercent, cooldownPercent, facing: (flags & 1) !== 0 ? 'left' : 'right',
-      alive: (flags & 2) !== 0, hp: reader.u16(), maxHp: reader.u16(),
-      spellDamage: reader.u16(), projectileSpeed: reader.f32(), spellBurst: reader.u8(), spellDirections: reader.u8(),
-      lastProcessedInput: reader.u32(), kills: reader.u32(), resurrectionDurationMs: reader.u32(), resurrectionRadius: reader.f32(),
-      resurrectionImmunityDurationMs: reader.u32(), resurrectionProgress: reader.f32(), resurrectionPending: (flags & 4) !== 0, immunityRemainingMs: reader.u32(),
+      alive: (flags & 2) !== 0, hp, maxHp, spellDamage, projectileSpeed, spellBurst, spellDirections,
+      lastProcessedInput, kills, resurrectionDurationMs, resurrectionRadius,
+      resurrectionImmunityDurationMs, resurrectionProgress, resurrectionPending: (flags & 4) !== 0, immunityRemainingMs, spells,
     })
   }
   const monsterCount = reader.u16()
@@ -667,7 +699,7 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   const meteorCount = reader.u16()
   if (meteorCount > 256) throw new Error(`Meteor count exceeds limit: ${meteorCount}`)
   const meteors: SnapshotMeteor[] = []
-  for (let index = 0; index < meteorCount; index += 1) meteors.push({ id: reader.u32(), x: reader.f32(), y: reader.f32(), radius: reader.f32(), impactInMs: reader.u32(), remainingMs: reader.u32() })
+  for (let index = 0; index < meteorCount; index += 1) meteors.push({ id: reader.u32(), x: reader.f32(), y: reader.f32(), radius: reader.f32(), impactInMs: reader.u32(), remainingMs: reader.u32(), friendly: reader.bool() })
   const pickupCount = reader.u16()
   if (pickupCount > 2048) throw new Error(`Pickup count exceeds limit: ${pickupCount}`)
   const pickups: SnapshotPickup[] = []
@@ -867,13 +899,25 @@ function decodeRemovalReason(value: number): ProjectileRemovedPayload['reason'] 
 }
 
 function encodePickupKind(kind: SnapshotPickup['kind']): number {
-  return kind === 'experience' ? 0 : 1
+  return kind === 'experience' ? 0 : kind === 'power_crate' ? 1 : 2
 }
 
 function decodePickupKind(value: number): SnapshotPickup['kind'] {
   if (value === 0) return 'experience'
   if (value === 1) return 'power_crate'
+  if (value === 2) return 'spell_chest'
   throw new Error(`Unknown pickup kind: ${value}`)
+}
+
+function decodeUpgradeSource(value: number): UpgradeOfferedPayload['source'] {
+  if (value === 0) return 'level_up'
+  if (value === 1) return 'treasure_chest'
+  if (value === 2) return 'spell_chest'
+  throw new Error(`Unknown upgrade source: ${value}`)
+}
+
+function isUpgradeAttribute(value: string): value is UpgradeAttribute {
+  return upgradeAttributes.has(value as UpgradeAttribute) || value.startsWith('spell:')
 }
 
 function decodeOutcome(value: number): MatchEndedPayload['outcome'] {

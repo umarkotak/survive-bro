@@ -453,18 +453,26 @@ func (r *Room) sendMatchStarted(client *Player, match *simulation.Match) {
 		StartedAtMs: match.StartedAt.UnixMilli(),
 		Obstacles:   make([]protocol.Obstacle, 0, len(r.level.Obstacles)),
 		DurationMs:  r.level.Duration.Milliseconds(),
-		Events:      make([]protocol.SystemEvent, 0, len(r.level.Events)),
+		Events:      publicSystemEvents(r.level),
 	}
 	for _, obstacle := range r.level.Obstacles {
 		payload.Obstacles = append(payload.Obstacles, protocol.Obstacle{ID: obstacle.ID, Type: obstacle.Type, X: obstacle.X, Y: obstacle.Y, Radius: obstacle.Radius})
-	}
-	for _, event := range r.level.Events {
-		payload.Events = append(payload.Events, protocol.SystemEvent{ID: event.ID, Type: event.Type, Title: event.Title, Description: event.Description, AtMs: event.At.Milliseconds()})
 	}
 	envelope, err := protocol.NewEnvelope(protocol.TypeMatchStarted, "", payload)
 	if err == nil {
 		r.sendCritical(map[string]*Player{client.ID: client}, client.ID, envelope)
 	}
+}
+
+func publicSystemEvents(level simulation.LevelDefinition) []protocol.SystemEvent {
+	events := make([]protocol.SystemEvent, 0, len(level.Events))
+	for _, event := range level.Events {
+		if !event.Show {
+			continue
+		}
+		events = append(events, protocol.SystemEvent{ID: event.ID, Type: event.Type, Title: event.Title, Description: event.Description, AtMs: event.At.Milliseconds()})
+	}
+	return events
 }
 
 func (r *Room) broadcastMatchStarted(clients map[string]*Player, match *simulation.Match) {
@@ -482,6 +490,11 @@ func (r *Room) broadcastSimulationEvents(clients map[string]*Player, events simu
 	}
 	for _, removed := range events.RemovedProjectiles {
 		for _, playerID := range r.broadcastCritical(clients, protocol.TypeProjectileRemoved, protocol.ProjectileRemovedPayload{ProjectileID: removed.ID, Reason: removed.Reason}) {
+			slow[playerID] = struct{}{}
+		}
+	}
+	for _, attack := range events.MonsterAttacks {
+		for _, playerID := range r.broadcastCritical(clients, protocol.TypeMonsterAttacked, attack) {
 			slow[playerID] = struct{}{}
 		}
 	}

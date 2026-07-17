@@ -9,7 +9,19 @@ import (
 	"unsafe"
 
 	"survive-bro/apps/backend/internal/protocol"
+	"survive-bro/apps/backend/internal/simulation"
 )
+
+func TestPublicSystemEventsExcludeHiddenEvents(t *testing.T) {
+	level := simulation.LevelDefinition{Events: []simulation.LevelEvent{
+		{ID: "visible", Type: "boss", Show: true},
+		{ID: "hidden", Type: "monster_buff", Show: false},
+	}}
+	events := publicSystemEvents(level)
+	if len(events) != 1 || events[0].ID != "visible" {
+		t.Fatalf("public events = %#v", events)
+	}
+}
 
 func TestManagerCreatesInspectableRoomCode(t *testing.T) {
 	manager := NewManager(time.Minute)

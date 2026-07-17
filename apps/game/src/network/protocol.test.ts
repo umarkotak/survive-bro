@@ -20,6 +20,7 @@ describe('binary protocol v2', () => {
         facing: 'left', hp: 90, maxHp: 100, alive: true, lastProcessedInput: 154, kills: 2,
         resurrectionDurationMs: 2000, resurrectionRadius: 120, resurrectionImmunityDurationMs: 5000,
         resurrectionProgress: 0, resurrectionPending: false, immunityRemainingMs: 0,
+        spells: [{ id: 'fireball', kind: 'projectile', level: 2, maxLevel: 5, damage: 24, cooldownMs: 690, range: 700, projectileSpeed: 770, projectileRadius: 10, burst: 1, directions: 2, beamLength: 0, beamWidth: 0, durationMs: 0, damageIntervalMs: 0, explosionRadius: 0, impactDamage: 0 }],
       }],
       monsters: [{ id: 7, typeId: 'slime-stage-1', x: 2100, y: 840, hp: 20, maxHp: 40, isBoss: false }],
       beams: [], explosions: [], meteors: [],

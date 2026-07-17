@@ -1,5 +1,5 @@
 import type { ConnectionState } from '../network/NetworkClient'
-import type { SystemEventPayload } from '../network/protocol'
+import type { SnapshotSpell, SystemEventPayload } from '../network/protocol'
 
 export type MatchOutcome = 'playing' | 'won' | 'lost'
 
@@ -35,6 +35,7 @@ export interface GameHudState {
   characterId: string
   characterName: string
   spellId: string
+  spells: SnapshotSpell[]
   armorPercent: number
   movementSpeed: number
   healthRegeneration: number
@@ -82,7 +83,7 @@ const initialState: GameHudState = {
   level: 1,
   experience: 0,
   experienceRequired: 13,
-  remainingMs: 6 * 60 * 1000,
+  remainingMs: 15 * 60 * 1000,
   kills: 0,
   enemies: 0,
   bosses: [],
@@ -95,6 +96,7 @@ const initialState: GameHudState = {
   characterId: 'ranger',
   characterName: 'Ranger',
   spellId: 'fireball',
+  spells: [],
   armorPercent: 0,
   movementSpeed: 220,
   healthRegeneration: 0,
@@ -110,7 +112,7 @@ const initialState: GameHudState = {
   connection: 'connecting',
   outcome: 'playing',
   score: 0,
-  levelDurationMs: 6 * 60 * 1000,
+  levelDurationMs: 15 * 60 * 1000,
   upgradePaused: false,
   timelineEvents: [],
   baseMaxHp: 100, baseArmorPercent: 0, baseMovementSpeed: 220, baseHealthRegeneration: 0,

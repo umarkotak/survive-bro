@@ -62,6 +62,9 @@ func (m *Match) updateResurrections() {
 		player.ResurrectionProgress = 0
 		player.ImmuneUntil = m.Elapsed + player.ResurrectionImmunityDuration
 		player.LastAttackAt = m.Elapsed
+		for _, spellID := range player.SpellIDs {
+			player.LastSpellAttackAt[spellID] = m.Elapsed
+		}
 	}
 }
 

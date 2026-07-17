@@ -190,6 +190,7 @@ button { color: inherit; }
 .health-value b { color: #f7fff8; font-variant-numeric: tabular-nums; }
 .health-meter { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, 0.12); }
 .health-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff625d, #ffae69); transition: width 120ms linear; }
+.active-spell-list { position: absolute; top: 98px; left: 16px; width: 250px; display: grid; gap: 5px; pointer-events: auto; }.active-spell-list button { min-width: 0; min-height: 38px; padding: 6px 9px; border: 1px solid rgba(128,236,224,.2); border-radius: 10px; display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; color: #edfdf5; background: rgba(8,20,15,.84); box-shadow: 0 6px 18px rgba(0,0,0,.22); text-align: left; cursor: pointer; backdrop-filter: blur(10px); }.active-spell-list button:hover { border-color: #80ece0; transform: translateX(2px); }.active-spell-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.active-spell-list span { color: #80ece0; font-size: 8px; font-weight: 900; }.active-spell-list small { grid-column: 1 / -1; color: #8da99a; font-size: 7px; letter-spacing: .04em; }
 .life-panel { position: absolute; top: 22px; left: 282px; min-width: 76px; height: 66px; padding: 8px 11px; border: 1px solid rgba(128,236,224,.42); border-radius: 14px; display: grid; place-content: center; gap: 3px; color: #d9fff8; background: linear-gradient(145deg, rgba(27,75,69,.9), rgba(8,20,15,.9)); box-shadow: 0 10px 28px rgba(0,0,0,.3), inset 0 0 18px rgba(128,236,224,.06); backdrop-filter: blur(12px); text-align: center; pointer-events: none; }
 .life-panel span { color: #80ece0; font-size: 7px; font-weight: 900; letter-spacing: .12em; white-space: nowrap; }
 .life-panel strong { font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 0 12px rgba(128,236,224,.38); }
@@ -277,6 +278,7 @@ button { color: inherit; }
 .stats-identity span, .stats-columns h3 { color: #80ece0; font-size: 9px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
 .stats-identity h2 { margin: 3px 0; font-size: 25px; }.stats-identity p { margin: 0; color: #9fb1a4; font-size: 11px; }
 .stats-columns { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }.stats-columns > section { padding: 16px; border: 1px solid rgba(218,244,218,.1); border-radius: 15px; background: rgba(2,12,7,.24); }.stats-columns h3 { margin: 0 0 14px; }
+.stats-columns.character-only { grid-template-columns: 1fr; }.spell-stats-modal { width: min(470px, 100%); }.spell-stats-modal .history-heading { padding-right: 44px; text-align: left; }
 .modal-actions { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 7px; }.modal-actions .menu-close { position: static; }.history-button { min-height: 34px; padding: 0 11px; border: 1px solid rgba(128,236,224,.2); border-radius: 10px; color: #80ece0; background: rgba(255,255,255,.06); font-size: 10px; font-weight: 850; cursor: pointer; }
 .history-heading { padding-right: 110px; }.history-heading > span { color: #80ece0; font-size: 9px; font-weight: 850; letter-spacing: .14em; }.history-heading h2 { margin: 5px 0; font-size: 28px; }.history-heading p { margin: 0; color: #9fb1a4; font-size: 11px; }
 .history-list { margin-top: 22px; display: grid; gap: 8px; }.history-list article { padding: 11px 12px; border: 1px solid rgba(218,244,218,.09); border-radius: 13px; display: flex; align-items: center; gap: 11px; background: rgba(2,12,7,.24); }.history-list article > i { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; display: grid; place-items: center; color: #10251b; background: #9af3ad; font-size: 9px; font-style: normal; font-weight: 950; }.history-list article > i.treasure_chest { background: #ffd778; }.history-list article > div { min-width: 0; display: grid; gap: 2px; }.history-list span { color: #809387; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }.history-list strong { font-size: 12px; }.history-list small { color: #a9c7b4; font-size: 10px; }.history-empty { padding: 44px 20px; border: 1px dashed rgba(218,244,218,.12); border-radius: 13px; color: #819488; text-align: center; font-size: 11px; }
@@ -523,6 +525,7 @@ button { color: inherit; }
   .app-shell { padding: 0; }
   .game-frame { border: 0; border-radius: 0; }
   .health-panel { top: 20px; left: 10px; width: 185px; padding: 7px 8px 7px 7px; gap: 8px; }
+  .active-spell-list { top: 92px; left: 10px; width: 185px; }
   .life-panel { top: 20px; left: 203px; min-width: 56px; height: 58px; padding: 6px 7px; }
   .life-panel span { font-size: 6px; }
   .life-panel strong { font-size: 19px; }

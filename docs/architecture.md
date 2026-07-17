@@ -37,7 +37,7 @@ lobby -> running -> finished
   +---------+----------+  (fresh join after an empty/reset match)
 ```
 
-The first join starts immediately and up to six players may join the running match. Each join contributes one bounded shared team life. The room actor alone reserves lives, advances solo or proximity-assisted resurrection progress, restores health, and enforces post-resurrection immunity; clients render replicated state only. Character definitions own resurrection duration, radius, and immunity duration so this lifecycle remains data-driven. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events independently replace rate, cap, and weighted enemy composition. `meteor_shower` hazards are simulated and damage players on the server; compact warning/linger state is replicated for Phaser rendering. Shared XP drives a team level, while all combat and movement attributes are stored and upgraded per player. Level-up and treasure rewards enter a room-owned synchronized phase: simulation elapsed time and entity updates freeze, each player receives a private three-card offer, and a wall-clock deadline continues through the pause. Planned lobby/countdown/rematch transitions remain deferred.
+The first join starts immediately and up to six players may join the running match. Each join contributes one bounded shared team life. The room actor alone reserves lives, advances solo or proximity-assisted resurrection progress, restores health, and enforces post-resurrection immunity; clients render replicated state only. Character definitions own resurrection duration, radius, and immunity duration so this lifecycle remains data-driven. Each room retains one validated level definition containing duration, terrain/obstacle asset IDs, obstacle layout, and ordered timed events. Characters, spells, and enemies are stable server-owned definitions; `spawn_rate` events replace rate/cap/composition, `treasure_rate` events replace normal chest cadence, and `meteor_shower` hazards damage players authoritatively. Events with `show: false` execute normally but are filtered before the public timeline crosses `match_started`. Shared XP drives a team level, while combat and movement attributes are stored per player. Reward phases freeze simulation, send each player one to three private choices, and retain a wall-clock deadline. Planned lobby/countdown/rematch transitions remain deferred.
 
 ## Fixed simulation
 
@@ -74,13 +74,13 @@ The local client predicts, stores unacknowledged inputs, accepts authoritative s
 
 Render remote entities about 100 ms behind using at least two snapshots. Projectiles use reliable spawn/remove events and client visual extrapolation; do not include projectile positions in every snapshot.
 
-Lingering beams and explosions are authoritative entities replicated as compact snapshot geometry. Characters reference reusable spell IDs rather than owning spell implementations. Players can hold multiple spell IDs, with one active default until inventory selection is implemented.
+Lingering and tracking beams, owner-following auras, explosions, and hostile/friendly meteors are authoritative entities replicated as compact snapshot geometry. Characters reference reusable spell IDs rather than owning spell implementations. The `spell-lab` test slice acquires unique spells through synchronized spell-chest offers; every owned spell runs on an independent authoritative cooldown. General inventory presentation remains pending.
 
 The browser sets `binaryType = "arraybuffer"` and decodes frames directly with `DataView`. Go encodes and decodes with `encoding/binary`. Protocol v2 intentionally breaks JSON v1 compatibility, so client and server releases must deploy together.
 
 ## Content
 
-The target content model is one global glossary covering attributes, modifiers, characters, spells, buffs, enemies, levels/events, and future artifacts. Each player has five spell slots and five buff slots. Spell/buff levels resolve through the shared modifier engine; clients never calculate authoritative inventory effects.
+The target content model is one global glossary covering attributes, modifiers, characters, spells, buffs, enemies, levels/events, and future artifacts. Spell slots are configured in runtime data and currently capped at four; buff slots remain five. Clients never calculate authoritative inventory effects.
 
 Spell definitions are reusable by players and enemies. Enemy spell loadouts select server-owned attacks; enemy projectiles target players and use the same bounded projectile lifecycle without transferring combat authority to clients.
 

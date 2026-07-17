@@ -57,6 +57,7 @@ Every payload string uses `u16 byteLength` followed by UTF-8 bytes. Collection c
 | `74` | S→C | `damage_applied_batch` |
 | `75` | S→C | `upgrade_offered` |
 | `76` | S→C | `upgrade_applied` |
+| `77` | S→C | `monster_attacked` |
 | `126` | S→C | `error` |
 | `127` | S→C | `server_shutdown` |
 
@@ -75,16 +76,17 @@ Display names are trimmed and contain 1–20 Unicode characters. Input sequence 
 
 - `joined`: `playerId string`, `reconnectToken string`, `roomName string`, `host u8`.
 - `room_state`: `status u8`, `hostPlayerId string`, `playerCount u8`, then players. Each player is `id string`, `displayName string`, `characterId string`, `flags u8` (`bit0 ready`, `bit1 connected`). Status enum: `0 lobby`, `1 running`, `2 finished`.
-- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`. Public event types are `spawn_rate`, `monster_buff`, `meteor_shower`, `boss`, and `end`.
+- `match_started`: room/map fields and obstacles, followed by `durationMs u32`, `eventCount u8`, then public timeline events. Each event is `id string`, `type string`, `title string`, `description string`, `atMs u32`. Runtime level events own `show`; only events with `show: true` cross this boundary. Public event types are `spawn_rate`, `monster_buff`, `meteor_shower`, `treasure_rate`, `spell_chest`, `boss`, and `end`.
 - `snapshot`: header/team fields and entity arrays described below.
 - `projectile_spawned`: `projectileId u32`, `ownerId string`, `weaponId string`, `x f32`, `y f32`, `velocityX f32`, `velocityY f32`, `spawnTick u32`.
 - Enemy-owned projectiles use `ownerId = "enemy:<monsterId>"`; clients render them normally and do not decide their hits.
 - `projectile_removed`: `projectileId u32`, `reason u8`. Reason enum: `0 enemy_hit`, `1 obstacle_hit`, `2 range_expired`, `3 match_ended`, `4 player_hit`.
 - `damage_applied_batch`: `count u16` (maximum `256`), then authoritative results. Each result is `attackerId string`, `targetType u8` (`0 monster`, `1 player`), `targetId string`, `amount u32`, `remainingHp u32`, `flags u8` (`bit0 critical`, `bit1 death`). Current runtime emits monster targets for projectile, impact, beam, and lingering-explosion damage. Clients may show cosmetic damage numbers but never infer or report hits from them.
-- `upgrade_offered`: `offerId u32`, `source u8` (`0 level_up`, `1 treasure_chest`), `teamLevel u16`, `deadlineMs i64`, `pendingCount u8`, `totalCount u8`, `flags u8` (`bit0 this player selected`), `choiceCount u8` (exactly `3`), then choices. Each choice is `attribute string`, `currentValue f32`, `addedValue f32`, `finalValue f32`. This message is private to its owning player and is resent when selection progress changes.
+- `upgrade_offered`: `offerId u32`, `source u8` (`0 level_up`, `1 treasure_chest`, `2 spell_chest`), `teamLevel u16`, `deadlineMs i64`, `pendingCount u8`, `totalCount u8`, `flags u8` (`bit0 this player selected`), `choiceCount u8` (`1–3`), then choices. Each choice is `attribute string`, `currentValue f32`, `addedValue f32`, `finalValue f32`. Spell-chest acquisition choices use `spell:<spellId>` and normal reward choices that level one owned spell use `spell:<spellId>:level`, making the affected spell explicit. Spell chests roll three random unowned entries from their event-configured pool. A pool is either `spellPool: "all"` for every player-available spell or an explicit `spellIds` list. If no eligible spell remains, that player's private offer changes to `treasure_chest`.
 - `match_ended`: `outcome u8` (`0 lost`, `1 won`), `survivalMs u32`, `teamLevel u16`, `totalKills u32`, `score u32`.
 - `pong`: empty.
-- `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs include player stats plus spell-specific projectile, beam, and explosion properties documented in `game-data/game.json`.
+- `upgrade_applied`: `playerId string`, `source u8` (`0 level_up`, `1 treasure_chest`, `2 spell_chest`), `attribute string`, `baseValue f32`, `addedValue f32`, `finalValue f32`. Attribute IDs include player stats plus spell-specific projectile, beam, and explosion properties documented in `game-data/game.json`; spell acquisition and level events use `spell:<spellId>`.
+- `monster_attacked`: `monsterId u32`, `spellId string`, `targetPlayerId string`. The server emits this when an enemy spell attack resolves. It is presentation input only; snapshots and server damage remain authoritative. The initial consumer animates `slime-punch` as a short squash/lunge cue.
 - `error`: `code string`, `message string`.
 - `server_shutdown`: `reason string`.
 
@@ -118,6 +120,17 @@ playerCount u8
     resurrectionImmunityDurationMs u32
     resurrectionProgress f32 (0..1)
     immunityRemainingMs u32
+    spellCount u8 (maximum configured slots, currently 4)
+      repeated spell:
+        id string
+        kind string
+        level u8, maxLevel u8
+        damage u16, cooldownMs u32
+        range f32, projectileSpeed f32, projectileRadius f32
+        burst u8, directions u8
+        beamLength f32, beamWidth f32
+        durationMs u32, damageIntervalMs u32
+        explosionRadius f32, impactDamage u16
 monsterCount u16
   repeated monster:
     id u32
@@ -144,10 +157,11 @@ meteorCount u16
     id u32
     x f32, y f32, radius f32
     impactInMs u32, remainingMs u32
+    flags u8 (bit0 player-owned/friendly)
 pickupCount u16
   repeated pickup:
     id u32
-    kind u8 (0 experience, 1 power_crate)
+    kind u8 (0 experience, 1 power_crate, 2 spell_chest)
     x f32, y f32
 teamLevel u16
 teamExperience u16
@@ -157,13 +171,13 @@ teamLives u8
 remainingMs u32
 ```
 
-XP, team level, and lives are shared, but player attributes are individual. Each join adds one life up to six. A pending resurrection reserves a life and successful resurrection consumes it. The server advances solo progress automatically; in multiplayer it advances only while a living teammate is within `resurrectionRadius`, resets otherwise, restores 50% max HP, and publishes the remaining immunity window. Each team level and collected power crate pauses authoritative simulation and gives every current player three independently generated eligible choices. The cards are rolled separately per player, so teammates need not see the same attributes. The phase resolves after everyone selects or after `50` seconds; unresolved players receive the first offered choice. No level-up or treasure upgrade is granted outside this selection phase. Upgrades cover max health, armor, movement speed, regeneration, attack buff, cooldown, spell damage, projectile or beam properties, burst (maximum two), and directions (maximum four).
+XP, team level, and lives are shared, but player attributes and learned spells are individual. Each player may own at most the configured number of unique spells, currently four, and every owned spell auto-casts on its own cooldown. Heavy Aura is an always-on area and has no cast animation or target requirement. Each join adds one life up to six. A pending resurrection reserves a life and successful resurrection consumes it. Each team level, collected power crate, and collected spell chest pauses authoritative simulation and gives every current player a private offer. Spell chests exclude owned spells and acquire one new spell at level 1. Normal rewards can include an explicitly named owned spell level, and snapshots expose every owned spell's resolved authoritative stats. A player with no eligible chest spell receives normal treasure upgrade choices instead. The phase resolves after everyone selects or after `50` seconds; unresolved players receive the first offered choice.
 
 Static obstacles are sent once in `match_started`. Projectile positions are extrapolated from reliable spawn/remove events rather than repeated in snapshots.
 
 ## Quick-play lifecycle
 
-- The first joined player starts the selected level immediately. Level 1 ends when its designated ending boss dies or at the six-minute fallback event.
+- The first joined player starts the selected level immediately. Level 1 ends when its designated sovereign boss dies or at the fifteen-minute fallback event.
 - Up to six players may join the named room while it is running.
 - Late joiners spawn around map centre according to current player order.
 - When the room becomes empty, its match resets and the empty-room expiry timer starts.
