@@ -52,6 +52,14 @@ type CharacterDefinition struct {
 	StartingSpellIDs             []string
 }
 
+type EnemyMovement struct {
+	Mode                string
+	DashInterval        time.Duration
+	DashWindup          time.Duration
+	DashDuration        time.Duration
+	DashSpeedMultiplier float64
+}
+
 type EnemyDefinition struct {
 	ID            string
 	Name          string
@@ -65,6 +73,7 @@ type EnemyDefinition struct {
 	Armor         int
 	SpellIDs      []string
 	ContactDelay  time.Duration
+	Movement      EnemyMovement
 }
 
 type SpawnEntry struct {

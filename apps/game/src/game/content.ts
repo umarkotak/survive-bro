@@ -17,11 +17,21 @@ export const RANGER = {
   },
 } as const
 
-export const SLIME_STAGES = {
+export interface MonsterStage {
+  texture: string
+  displaySize: number
+}
+
+export const SLIME_STAGES: Record<string, MonsterStage> = {
   'slime-stage-1': { texture: enemyTextureKey('slime-stage-1'), displaySize: 132 },
   'slime-stage-2': { texture: enemyTextureKey('slime-stage-2'), displaySize: 154 },
   'slime-stage-3': { texture: enemyTextureKey('slime-stage-3'), displaySize: 220 },
-} as const
+  'slime-darter': { texture: enemyTextureKey('slime-stage-1'), displaySize: 116 },
+  'slime-sprinter': { texture: enemyTextureKey('slime-stage-1'), displaySize: 104 },
+  'slime-bruiser': { texture: enemyTextureKey('slime-stage-2'), displaySize: 186 },
+}
+
+export const DEFAULT_MONSTER_STAGE: MonsterStage = { texture: enemyTextureKey('slime-stage-1'), displaySize: 132 }
 
 export const LARGE_ROCK = {
   id: 'large_rock',

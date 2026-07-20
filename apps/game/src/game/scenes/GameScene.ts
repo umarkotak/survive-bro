@@ -21,7 +21,7 @@ import type {
   SnapshotPickup,
   SnapshotPlayer,
 } from '../../network/protocol'
-import { RANGER, SLIME_STAGES } from '../content'
+import { RANGER, SLIME_STAGES, DEFAULT_MONSTER_STAGE } from '../content'
 import { normalizeMovement, resolveCircleOverlap, teammateEdgeIndicator } from '../model'
 
 interface IndicatorView {
@@ -615,7 +615,7 @@ export class GameScene extends Phaser.Scene {
     for (const monster of monsters) {
       let view = this.monsters.get(monster.id)
       if (!view) {
-        const content = SLIME_STAGES[monster.typeId]
+        const content = SLIME_STAGES[monster.typeId] ?? DEFAULT_MONSTER_STAGE
         const displaySize = content.displaySize
         const sprite = this.add.image(monster.x, monster.y, content.texture).setDisplaySize(displaySize, displaySize)
         view = {

@@ -903,7 +903,7 @@
         "max_health": 10000,
         "armor_percent": 0.80,
         "movement_speed": 260,
-        "health_regeneration": 10,
+        "health_regeneration": 100,
         "attack_buff_percent": 0,
         "cooldown_reduction_percent": 0,
         "pickup_radius": 160,
@@ -973,6 +973,64 @@
         "cooldown_ms": 650,
         "collision_radius": 54
       }
+    },
+    "slime-darter": {
+      "name": "Slime Darter",
+      "sprite": "enemy-slime-stage-1",
+      "spellIds": [
+        "slime-punch"
+      ],
+      "attributes": {
+        "score": 150,
+        "experience_drop": 1,
+        "health": 45,
+        "armor": 1,
+        "movement_speed": 70,
+        "damage": 12,
+        "cooldown_ms": 800,
+        "collision_radius": 22
+      },
+      "movement": {
+        "mode": "dash",
+        "dashIntervalMs": 2600,
+        "dashWindupMs": 450,
+        "dashDurationMs": 280,
+        "dashSpeedMultiplier": 4.5
+      }
+    },
+    "slime-sprinter": {
+      "name": "Slime Sprinter",
+      "sprite": "enemy-slime-stage-1",
+      "spellIds": [
+        "slime-punch"
+      ],
+      "attributes": {
+        "score": 130,
+        "experience_drop": 1,
+        "health": 38,
+        "armor": 1,
+        "movement_speed": 135,
+        "damage": 8,
+        "cooldown_ms": 700,
+        "collision_radius": 20
+      }
+    },
+    "slime-bruiser": {
+      "name": "Slime Bruiser",
+      "sprite": "enemy-slime-stage-2",
+      "spellIds": [
+        "slime-punch"
+      ],
+      "attributes": {
+        "score": 320,
+        "experience_drop": 3,
+        "health": 220,
+        "armor": 2,
+        "movement_speed": 48,
+        "damage": 22,
+        "cooldown_ms": 900,
+        "collision_radius": 38
+      }
     }
   },
   "levels": {
@@ -996,12 +1054,12 @@
         {
           "id": "opening-surge", "type": "spawn_rate", "at_ms": 0, "show": true,
           "title": "The Meadow Erupts", "description": "The first Slime surge is already closing in.",
-          "config": { "spawn_rate": 1.2, "max_living": 55, "composition": [{ "enemyId": "slime-stage-1", "weight": 100 }] }
+          "config": { "spawn_rate": 1.2, "max_living": 55, "composition": [{ "enemyId": "slime-stage-1", "weight": 78 }, { "enemyId": "slime-sprinter", "weight": 12 }, { "enemyId": "slime-darter", "weight": 10 }] }
         },
         {
           "id": "first-ripples", "type": "spawn_rate", "at_ms": 60000, "show": false,
           "title": "First Ripples", "description": "Greater Slimes enter the opening swarm.",
-          "config": { "spawn_rate": 1.8, "max_living": 85, "composition": [{ "enemyId": "slime-stage-1", "weight": 85 }, { "enemyId": "slime-stage-2", "weight": 15 }] }
+          "config": { "spawn_rate": 1.8, "max_living": 85, "composition": [{ "enemyId": "slime-stage-1", "weight": 64 }, { "enemyId": "slime-stage-2", "weight": 15 }, { "enemyId": "slime-sprinter", "weight": 11 }, { "enemyId": "slime-darter", "weight": 10 }] }
         },
         {
           "id": "first-hardening", "type": "monster_buff", "at_ms": 120000, "show": false,
@@ -1011,7 +1069,7 @@
         {
           "id": "pressure-rising", "type": "spawn_rate", "at_ms": 120000, "show": true,
           "title": "Pressure Rising", "description": "The swarm thickens and tougher Slimes take the field.",
-          "config": { "spawn_rate": 2.6, "max_living": 120, "composition": [{ "enemyId": "slime-stage-1", "weight": 65 }, { "enemyId": "slime-stage-2", "weight": 35 }] }
+          "config": { "spawn_rate": 2.6, "max_living": 120, "composition": [{ "enemyId": "slime-stage-1", "weight": 48 }, { "enemyId": "slime-stage-2", "weight": 27 }, { "enemyId": "slime-bruiser", "weight": 10 }, { "enemyId": "slime-sprinter", "weight": 8 }, { "enemyId": "slime-darter", "weight": 7 }] }
         },
         {
           "id": "spell-chest-alpha", "type": "spell_chest", "at_ms": 150000, "show": true,
@@ -1031,7 +1089,7 @@
         {
           "id": "royal-retinue", "type": "spawn_rate", "at_ms": 210000, "show": false,
           "title": "Royal Retinue", "description": "Greater Slimes become the majority.",
-          "config": { "spawn_rate": 3.3, "max_living": 155, "composition": [{ "enemyId": "slime-stage-1", "weight": 45 }, { "enemyId": "slime-stage-2", "weight": 55 }] }
+          "config": { "spawn_rate": 3.3, "max_living": 155, "composition": [{ "enemyId": "slime-stage-1", "weight": 33 }, { "enemyId": "slime-stage-2", "weight": 42 }, { "enemyId": "slime-bruiser", "weight": 12 }, { "enemyId": "slime-darter", "weight": 8 }, { "enemyId": "slime-sprinter", "weight": 5 }] }
         },
         {
           "id": "second-hardening", "type": "monster_buff", "at_ms": 240000, "show": false,
@@ -1046,7 +1104,7 @@
         {
           "id": "burning-horde", "type": "spawn_rate", "at_ms": 300000, "show": true,
           "title": "Burning Horde", "description": "A dense Greater Slime wave arrives under meteor fire.",
-          "config": { "spawn_rate": 4.1, "max_living": 190, "composition": [{ "enemyId": "slime-stage-1", "weight": 25 }, { "enemyId": "slime-stage-2", "weight": 75 }] }
+          "config": { "spawn_rate": 4.1, "max_living": 190, "composition": [{ "enemyId": "slime-stage-1", "weight": 17 }, { "enemyId": "slime-stage-2", "weight": 58 }, { "enemyId": "slime-bruiser", "weight": 13 }, { "enemyId": "slime-darter", "weight": 8 }, { "enemyId": "slime-sprinter", "weight": 4 }] }
         },
         {
           "id": "spell-chest-beta", "type": "spell_chest", "at_ms": 390000, "show": true,
@@ -1156,8 +1214,11 @@
           "config": {
             "spawn_rate": 1.8, "max_living": 80,
             "composition": [
-              { "enemyId": "slime-stage-1", "weight": 65 },
-              { "enemyId": "slime-stage-2", "weight": 35 }
+              { "enemyId": "slime-stage-1", "weight": 45 },
+              { "enemyId": "slime-stage-2", "weight": 25 },
+              { "enemyId": "slime-sprinter", "weight": 12 },
+              { "enemyId": "slime-darter", "weight": 10 },
+              { "enemyId": "slime-bruiser", "weight": 8 }
             ]
           }
         },

@@ -128,7 +128,7 @@ export interface SnapshotSpell { id: string; kind: string; level: number; maxLev
 
 export interface SnapshotMonster {
   id: number
-  typeId: 'slime-stage-1' | 'slime-stage-2' | 'slime-stage-3'
+  typeId: string
   x: number
   y: number
   hp: number
@@ -684,7 +684,6 @@ function decodeSnapshot(reader: BinaryReader): SnapshotPayload {
   const monsters: SnapshotMonster[] = []
   for (let index = 0; index < monsterCount; index += 1) {
     const id = reader.u32(), x = reader.f32(), y = reader.f32(), typeId = reader.string()
-    if (typeId !== 'slime-stage-1' && typeId !== 'slime-stage-2' && typeId !== 'slime-stage-3') throw new Error(`Unknown monster type: ${typeId}`)
     const hp = reader.u32(), maxHp = reader.u32(), flags = reader.u8()
     if ((flags & ~1) !== 0) throw new Error(`Invalid monster flags: ${flags}`)
     monsters.push({ id, x, y, typeId, hp, maxHp, isBoss: (flags & 1) !== 0 })

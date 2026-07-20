@@ -81,6 +81,13 @@ type runtimeGameData struct {
 			CooldownMS      int64   `json:"cooldown_ms"`
 			CollisionRadius float64 `json:"collision_radius"`
 		} `json:"attributes"`
+		Movement struct {
+			Mode                string  `json:"mode"`
+			DashIntervalMS      int64   `json:"dashIntervalMs"`
+			DashWindupMS        int64   `json:"dashWindupMs"`
+			DashDurationMS      int64   `json:"dashDurationMs"`
+			DashSpeedMultiplier float64 `json:"dashSpeedMultiplier"`
+		} `json:"movement"`
 	} `json:"enemies"`
 	Levels map[string]runtimeLevel `json:"levels"`
 }
@@ -261,7 +268,23 @@ func LoadRuntimeGameData(path string) error {
 				return fmt.Errorf("enemy %q references unknown spell %q", id, spellID)
 			}
 		}
-		loadedEnemies[id] = EnemyDefinition{ID: id, Name: value.Name, SpriteID: value.Sprite, Score: a.Score, Experience: a.Experience, MaxHP: a.Health, Speed: a.MovementSpeed, Radius: a.CollisionRadius, ContactDamage: a.Damage, Armor: a.Armor, SpellIDs: append([]string(nil), value.SpellIDs...), ContactDelay: time.Duration(a.CooldownMS) * time.Millisecond}
+		movement := EnemyMovement{}
+		movement.Mode = value.Movement.Mode
+		if movement.Mode == "" {
+			movement.Mode = "normal"
+		}
+		if movement.Mode == "dash" {
+			if value.Movement.DashIntervalMS <= 0 || value.Movement.DashWindupMS <= 0 || value.Movement.DashDurationMS <= 0 || value.Movement.DashSpeedMultiplier <= 1 {
+				return fmt.Errorf("enemy %q has invalid dash movement values", id)
+			}
+			movement.DashInterval = time.Duration(value.Movement.DashIntervalMS) * time.Millisecond
+			movement.DashWindup = time.Duration(value.Movement.DashWindupMS) * time.Millisecond
+			movement.DashDuration = time.Duration(value.Movement.DashDurationMS) * time.Millisecond
+			movement.DashSpeedMultiplier = value.Movement.DashSpeedMultiplier
+		} else if movement.Mode != "normal" {
+			return fmt.Errorf("enemy %q has unsupported movement mode %q", id, movement.Mode)
+		}
+		loadedEnemies[id] = EnemyDefinition{ID: id, Name: value.Name, SpriteID: value.Sprite, Score: a.Score, Experience: a.Experience, MaxHP: a.Health, Speed: a.MovementSpeed, Radius: a.CollisionRadius, ContactDamage: a.Damage, Armor: a.Armor, SpellIDs: append([]string(nil), value.SpellIDs...), ContactDelay: time.Duration(a.CooldownMS) * time.Millisecond, Movement: movement}
 	}
 	loadedLevels := make(map[string]LevelDefinition, len(source.Levels))
 	for id, level := range source.Levels {

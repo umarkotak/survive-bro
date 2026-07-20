@@ -101,6 +101,15 @@ type Monster struct {
 	SpellIDs               []string
 	LastSpellAt            map[string]time.Duration
 	AttackDamageMultiplier float64
+	MovementMode           string
+	DashInterval           time.Duration
+	DashWindup             time.Duration
+	DashDuration           time.Duration
+	DashSpeedMultiplier    float64
+	DashState              string
+	DashTimer              time.Duration
+	DashDirX               float64
+	DashDirY               float64
 }
 
 type Projectile struct {
@@ -966,21 +975,7 @@ func (m *Match) updateMonsters(events *Events) {
 		if target == nil {
 			return
 		}
-		dx := target.X - monster.X
-		dy := target.Y - monster.Y
-		distance := math.Hypot(dx, dy)
-		if distance > 0 {
-			attemptX := monster.X + dx/distance*monster.Speed*TickDuration.Seconds()
-			attemptY := monster.Y + dy/distance*monster.Speed*TickDuration.Seconds()
-			resolvedX, resolvedY := resolveWorldAndObstacles(attemptX, attemptY, monster.Radius, m.Level.Obstacles)
-			if resolvedX != attemptX || resolvedY != attemptY {
-				resolvedX += -dy / distance * monster.Speed * TickDuration.Seconds() * 0.55
-				resolvedY += dx / distance * monster.Speed * TickDuration.Seconds() * 0.55
-				resolvedX, resolvedY = resolveWorldAndObstacles(resolvedX, resolvedY, monster.Radius, m.Level.Obstacles)
-			}
-			monster.X = resolvedX
-			monster.Y = resolvedY
-		}
+		m.moveMonster(monster, target)
 		m.castMonsterSpell(monster, target, events)
 
 		for _, player := range m.Players {
@@ -997,6 +992,67 @@ func (m *Match) updateMonsters(events *Events) {
 		}
 	}
 	m.separateMonsters()
+}
+
+func (m *Match) moveMonster(monster *Monster, target *Player) {
+	dx := target.X - monster.X
+	dy := target.Y - monster.Y
+	distance := math.Hypot(dx, dy)
+	speed := monster.Speed
+	dirX, dirY := 0.0, 0.0
+	if distance > 0 {
+		dirX, dirY = dx/distance, dy/distance
+	}
+	if monster.MovementMode == "dash" {
+		speed, dirX, dirY = m.updateMonsterDash(monster, target, distance, dirX, dirY)
+	}
+	if dirX == 0 && dirY == 0 {
+		return
+	}
+	step := speed * TickDuration.Seconds()
+	attemptX := monster.X + dirX*step
+	attemptY := monster.Y + dirY*step
+	resolvedX, resolvedY := resolveWorldAndObstacles(attemptX, attemptY, monster.Radius, m.Level.Obstacles)
+	if resolvedX != attemptX || resolvedY != attemptY {
+		resolvedX += -dirY * step * 0.55
+		resolvedY += dirX * step * 0.55
+		resolvedX, resolvedY = resolveWorldAndObstacles(resolvedX, resolvedY, monster.Radius, m.Level.Obstacles)
+	}
+	monster.X = resolvedX
+	monster.Y = resolvedY
+}
+
+func (m *Match) updateMonsterDash(monster *Monster, target *Player, distance, dirX, dirY float64) (float64, float64, float64) {
+	switch monster.DashState {
+	case "windup":
+		monster.DashTimer += TickDuration
+		speed := monster.Speed * MonsterDashWindupSpeedFactor
+		if monster.DashTimer >= monster.DashWindup {
+			monster.DashState = "dash"
+			monster.DashTimer = 0
+			if distance > 0 {
+				monster.DashDirX, monster.DashDirY = dirX, dirY
+			} else {
+				monster.DashDirX, monster.DashDirY = 1, 0
+			}
+		}
+		return speed, dirX, dirY
+	case "dash":
+		monster.DashTimer += TickDuration
+		speed := monster.Speed * monster.DashSpeedMultiplier
+		if monster.DashTimer >= monster.DashDuration {
+			monster.DashState = "idle"
+			monster.DashTimer = 0
+		}
+		return speed, monster.DashDirX, monster.DashDirY
+	default:
+		monster.DashTimer += TickDuration
+		if monster.DashTimer >= monster.DashInterval {
+			monster.DashState = "windup"
+			monster.DashTimer = 0
+		}
+		return monster.Speed, dirX, dirY
+	}
 }
 
 func (m *Match) castMonsterSpell(monster *Monster, target *Player, events *Events) {
@@ -1217,7 +1273,7 @@ func (m *Match) spawnMonsterOf(enemyID string, requestedMultipliers ...*EnemySta
 		}
 		m.nextMonsterID++
 		maxHP := max(1, int(math.Round(float64(definition.MaxHP)*m.monsterHealthMultiplier*healthMultiplier)))
-		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier * speedMultiplier, Radius: radius, ContactDamage: max(1, int(math.Round(float64(definition.ContactDamage)*damageMultiplier))), Armor: definition.Armor, SpellIDs: append([]string(nil), definition.SpellIDs...), LastSpellAt: make(map[string]time.Duration, len(definition.SpellIDs)), AttackDamageMultiplier: damageMultiplier, ContactDelay: time.Duration(float64(definition.ContactDelay) * cooldownMultiplier), Experience: max(1, int(math.Round(float64(definition.Experience)*experienceMultiplier))), Score: max(1, int(math.Round(float64(definition.Score)*scoreMultiplier))), LastContact: make(map[string]time.Duration)}
+		m.Monsters[m.nextMonsterID] = &Monster{ID: m.nextMonsterID, TypeID: definition.ID, X: x, Y: y, HP: maxHP, MaxHP: maxHP, Speed: definition.Speed * m.monsterSpeedMultiplier * speedMultiplier, Radius: radius, ContactDamage: max(1, int(math.Round(float64(definition.ContactDamage)*damageMultiplier))), Armor: definition.Armor, SpellIDs: append([]string(nil), definition.SpellIDs...), LastSpellAt: make(map[string]time.Duration, len(definition.SpellIDs)), AttackDamageMultiplier: damageMultiplier, ContactDelay: time.Duration(float64(definition.ContactDelay) * cooldownMultiplier), Experience: max(1, int(math.Round(float64(definition.Experience)*experienceMultiplier))), Score: max(1, int(math.Round(float64(definition.Score)*scoreMultiplier))), LastContact: make(map[string]time.Duration), MovementMode: definition.Movement.Mode, DashInterval: definition.Movement.DashInterval, DashWindup: definition.Movement.DashWindup, DashDuration: definition.Movement.DashDuration, DashSpeedMultiplier: definition.Movement.DashSpeedMultiplier}
 		return m.nextMonsterID
 	}
 	return 0
